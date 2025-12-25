@@ -7,6 +7,13 @@
   "bin": {
     "fetchi": "cli.ts"
   },
+  "files": [
+    "cli.ts",
+    "index.ts",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "bun run index.ts",
     "start": "bun run index.ts",

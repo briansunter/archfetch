@@ -1,0 +1,28 @@
+# Development
+.claude/
+.github/
+.git/
+.gitignore
+.npmrc
+plugin/
+skills/
+commands/
+tests/
+.ts
+
+# Config files
+.editorconfig
+biome.json
+bun.lock
+tsconfig.json
+
+# Documentation
+CLAUDE.md
+docs/
+
+# Build/temp
+.tmp/
+*.tgz
+
+# Node
+node_modules/
