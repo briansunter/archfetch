@@ -5,7 +5,7 @@
   "type": "module",
   "main": "index.ts",
   "bin": {
-    "fetchi": "./cli.ts"
+    "fetchi": "cli.ts"
   },
   "scripts": {
     "dev": "bun run index.ts",
