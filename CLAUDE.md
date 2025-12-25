@@ -53,7 +53,7 @@ Key modules:
 ### Configuration (`src/config/`)
 Config loading priority: CLI args → env vars → config file → defaults
 
-Config files checked: `sofetch.config.json`, `.sofetchrc`, `.sofetchrc.json`
+Config files checked: `arcfetch.config.json`, `.arcfetchrc`, `.arcfetchrc.json`
 
 Schema defined with Zod in `schema.ts`. Key thresholds:
 - `quality.minScore` (default: 60) - Below this, content is rejected

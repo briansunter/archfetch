@@ -52,7 +52,7 @@ bunx npm publish --token <YOUR_TOKEN> --access public
 ```
 
 **After first publish:**
-- Package exists on npm: https://www.npmjs.com/package/sofetch
+- Package exists on npm: https://www.npmjs.com/package/arcfetch
 - You can now configure Trusted Publishing in Step 1
 
 ### Step 1: Enable Trusted Publishing (Recommended, No Tokens)
@@ -67,7 +67,7 @@ bunx npm publish --token <YOUR_TOKEN> --access public
    | Field | Value |
    |-------|-------|
    | GitHub Organization / User | `briansunter` |
-   | Repository | `sofetch` |
+   | Repository | `arcfetch` |
    | Workflow filename | `publish.yml` |
    | Environment name | (leave empty) |
 
@@ -102,8 +102,8 @@ The GitHub Actions workflow will automatically:
 After publishing, verify provenance:
 
 ```bash
-npm view sofetch versions
-npm view sofetch --json | jq '.dist.attestations'
+npm view arcfetch versions
+npm view arcfetch --json | jq '.dist.attestations'
 ```
 
 ## Token Fallback (Optional)

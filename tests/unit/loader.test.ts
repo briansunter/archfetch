@@ -35,27 +35,27 @@ describe('config loader', () => {
       expect(result).toBeNull();
     });
 
-    test('finds sofetch.config.json first', () => {
-      writeFileSync(join(TEST_DIR, 'sofetch.config.json'), '{}');
-      writeFileSync(join(TEST_DIR, '.sofetchrc'), '{}');
+    test('finds arcfetch.config.json first', () => {
+      writeFileSync(join(TEST_DIR, 'arcfetch.config.json'), '{}');
+      writeFileSync(join(TEST_DIR, '.arcfetchrc'), '{}');
 
       const result = findConfigFile(TEST_DIR);
-      expect(result).toBe(join(TEST_DIR, 'sofetch.config.json'));
+      expect(result).toBe(join(TEST_DIR, 'arcfetch.config.json'));
     });
 
-    test('finds .sofetchrc when sofetch.config.json does not exist', () => {
-      writeFileSync(join(TEST_DIR, '.sofetchrc'), '{}');
-      writeFileSync(join(TEST_DIR, '.sofetchrc.json'), '{}');
+    test('finds .arcfetchrc when arcfetch.config.json does not exist', () => {
+      writeFileSync(join(TEST_DIR, '.arcfetchrc'), '{}');
+      writeFileSync(join(TEST_DIR, '.arcfetchrc.json'), '{}');
 
       const result = findConfigFile(TEST_DIR);
-      expect(result).toBe(join(TEST_DIR, '.sofetchrc'));
+      expect(result).toBe(join(TEST_DIR, '.arcfetchrc'));
     });
 
-    test('finds .sofetchrc.json when others do not exist', () => {
-      writeFileSync(join(TEST_DIR, '.sofetchrc.json'), '{}');
+    test('finds .arcfetchrc.json when others do not exist', () => {
+      writeFileSync(join(TEST_DIR, '.arcfetchrc.json'), '{}');
 
       const result = findConfigFile(TEST_DIR);
-      expect(result).toBe(join(TEST_DIR, '.sofetchrc.json'));
+      expect(result).toBe(join(TEST_DIR, '.arcfetchrc.json'));
     });
   });
 

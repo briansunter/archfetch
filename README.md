@@ -1,4 +1,4 @@
-# sofetch
+# arcfetch
 
 Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering fallback via Playwright (local or Docker).
 
@@ -28,16 +28,16 @@ docker pull mcr.microsoft.com/playwright:v1.40.0-jammy
 
 ```bash
 # Fetch a URL
-sofetch fetch https://example.com/article
+arcfetch fetch https://example.com/article
 
 # List cached references
-sofetch list
+arcfetch list
 
 # Promote to docs folder
-sofetch promote REF-001
+arcfetch promote REF-001
 
 # Delete a reference
-sofetch delete REF-001
+arcfetch delete REF-001
 ```
 
 ### MCP Server
@@ -47,9 +47,9 @@ Add to your Claude Code MCP configuration:
 ```json
 {
   "mcpServers": {
-    "sofetch": {
+    "arcfetch": {
       "command": "bun",
-      "args": ["run", "/path/to/sofetch/index.ts"]
+      "args": ["run", "/path/to/arcfetch/index.ts"]
     }
   }
 }
@@ -62,7 +62,7 @@ Add to your Claude Code MCP configuration:
 Fetch URL and save to temp folder.
 
 ```bash
-sofetch fetch <url> [options]
+arcfetch fetch <url> [options]
 
 Options:
   -q, --query <text>      Search query (saved as metadata)
@@ -79,7 +79,7 @@ Options:
 List all cached references.
 
 ```bash
-sofetch list [-o json]
+arcfetch list [-o json]
 ```
 
 ### promote
@@ -87,7 +87,7 @@ sofetch list [-o json]
 Move reference from temp to docs folder.
 
 ```bash
-sofetch promote <ref-id>
+arcfetch promote <ref-id>
 ```
 
 ### delete
@@ -95,7 +95,7 @@ sofetch promote <ref-id>
 Delete a cached reference.
 
 ```bash
-sofetch delete <ref-id>
+arcfetch delete <ref-id>
 ```
 
 ### config
@@ -103,7 +103,7 @@ sofetch delete <ref-id>
 Show current configuration.
 
 ```bash
-sofetch config
+arcfetch config
 ```
 
 ## MCP Tools
@@ -119,7 +119,7 @@ sofetch config
 
 ### Config File
 
-Create `sofetch.config.json` in your project root:
+Create `arcfetch.config.json` in your project root:
 
 ```json
 {
@@ -192,20 +192,20 @@ docs/ai/references/            # Permanent docs (after promote)
 ### Fetch with custom quality threshold
 
 ```bash
-sofetch fetch https://spa-heavy-site.com --min-quality 70 --playwright docker
+arcfetch fetch https://spa-heavy-site.com --min-quality 70 --playwright docker
 ```
 
 ### Fetch and get JSON output
 
 ```bash
-sofetch fetch https://example.com -o json
+arcfetch fetch https://example.com -o json
 ```
 
 ### Use in scripts
 
 ```bash
 # Get just the ref ID and path
-result=$(sofetch fetch https://example.com -o summary)
+result=$(arcfetch fetch https://example.com -o summary)
 ref_id=$(echo $result | cut -d'|' -f1)
 filepath=$(echo $result | cut -d'|' -f2)
 ```

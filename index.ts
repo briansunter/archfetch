@@ -18,7 +18,7 @@ import { saveToTemp, listCached, promoteReference, deleteCached } from './src/co
 
 const server = new Server(
   {
-    name: 'sofetch',
+    name: 'arcfetch',
     version: '3.0.0',
   },
   {
