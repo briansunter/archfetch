@@ -1,4 +1,4 @@
-import type { Browser, Page } from 'playwright';
+import type { Browser } from 'playwright';
 
 export interface BrowserManager {
   getBrowser(): Promise<Browser>;

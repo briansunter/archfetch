@@ -51,9 +51,10 @@ export async function fetchWithBrowser(
   const browser = await manager.getBrowser();
   
   try {
-    const page = await browser.newPage();
-    
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    });
+    const page = await context.newPage();
     
     if (verbose) {
       console.error(`🎭 Playwright: Navigating to ${url} (${manager.isDocker() ? 'Docker' : 'local'})`);
@@ -71,7 +72,8 @@ export async function fetchWithBrowser(
     }
     
     await page.close();
-    
+    await context.close();
+
     return { html };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

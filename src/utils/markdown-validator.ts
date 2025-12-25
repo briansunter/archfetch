@@ -68,7 +68,7 @@ export function validateMarkdown(markdown: string): ValidationResult {
   }
 
   // Check for minimal/blank content
-  const contentLength = markdown.replace(/<[^>]*>/g, '').replace(/[#*\-_`\[\]()]/g, '').trim().length;
+  const contentLength = markdown.replace(/<[^>]*>/g, '').replace(/[#*\-_`[\]()]/g, '').trim().length;
 
   if (contentLength === 0) {
     score = 0;

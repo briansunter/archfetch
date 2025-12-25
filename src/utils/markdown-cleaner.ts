@@ -23,7 +23,7 @@ export function cleanMarkdown(markdown: string): string {
   cleaned = cleaned.replace(/([^\n])\n```/g, '$1\n\n```')
   cleaned = cleaned.replace(/```\n([^`])/g, '```\n\n$1')
   cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, ' ')
-  cleaned = cleaned.replace(/  +/g, ' ')
+  cleaned = cleaned.replace(/ {2,}/g, ' ')
 
   return cleaned
 }
@@ -43,7 +43,7 @@ export function advancedClean(markdown: string): string {
   cleaned = cleaned.replace(/[\u2013\u2014]/g, '-')
 
   cleaned = cleaned.replace(/^(?!```)[^\n]*$/gm, (line) => {
-    return line.replace(/  +/g, ' ')
+    return line.replace(/ {2,}/g, ' ')
   })
 
   return cleaned
@@ -61,7 +61,7 @@ export function finalCleanup(markdown: string): string {
   cleaned = cleaned.replace(/^~~~(\w*)\n/gm, '```$1\n')
   cleaned = cleaned.replace(/^~~~$/gm, '```')
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
-  cleaned = cleaned.trim() + '\n'
+  cleaned = `${cleaned.trim()}\n`
 
   return cleaned
 }

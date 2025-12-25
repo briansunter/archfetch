@@ -1,6 +1,6 @@
 import { chromium, type Browser } from 'playwright';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { PlaywrightConfig } from '../../config/schema.js';
 import type { BrowserManager } from './types.js';
 
@@ -100,7 +100,6 @@ export class DockerBrowserManager implements BrowserManager {
         server.stop();
         return port;
       } catch {
-        continue;
       }
     }
     throw new Error('No available ports found');

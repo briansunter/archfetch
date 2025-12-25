@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
-import { z } from 'zod';
-import { loadConfig, type CliConfigOverrides } from './src/config/index.js';
+import { loadConfig } from './src/config/index.js';
 import { fetchUrl, closeBrowser } from './src/core/pipeline.js';
 import { saveToTemp, listCached, promoteReference, deleteCached } from './src/core/cache.js';
 
@@ -95,12 +94,18 @@ async function commandFetch(options: FetchOptions): Promise<void> {
 
   if (!result.success) {
     if (options.output === 'json') {
-      console.log(JSON.stringify({
-        success: false,
-        error: result.error,
-        suggestion: result.suggestion,
-        quality: result.quality,
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            success: false,
+            error: result.error,
+            suggestion: result.suggestion,
+            quality: result.quality,
+          },
+          null,
+          2
+        )
+      );
     } else {
       console.error(`❌ ${result.error}`);
       if (result.suggestion) {
@@ -114,16 +119,10 @@ async function commandFetch(options: FetchOptions): Promise<void> {
   }
 
   // Save to temp
-  const saveResult = await saveToTemp(
-    config,
-    result.title!,
-    options.url,
-    result.markdown!,
-    options.query
-  );
+  const saveResult = await saveToTemp(config, result.title!, options.url, result.markdown!, options.query);
 
   // Small delay to ensure file is flushed to disk (Bun-specific issue)
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, 100));
 
   if (saveResult.error) {
     if (options.output === 'json') {
@@ -136,22 +135,28 @@ async function commandFetch(options: FetchOptions): Promise<void> {
 
   // Output result
   if (options.output === 'json') {
-    console.log(JSON.stringify({
-      success: true,
-      refId: saveResult.refId,
-      title: result.title,
-      byline: result.byline,
-      siteName: result.siteName,
-      excerpt: result.excerpt,
-      url: options.url,
-      filepath: saveResult.filepath,
-      size: result.markdown!.length,
-      tokens: Math.round(result.markdown!.length / 4),
-      quality: result.quality?.score,
-      usedPlaywright: result.usedPlaywright,
-      playwrightReason: result.playwrightReason,
-      query: options.query,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          success: true,
+          refId: saveResult.refId,
+          title: result.title,
+          byline: result.byline,
+          siteName: result.siteName,
+          excerpt: result.excerpt,
+          url: options.url,
+          filepath: saveResult.filepath,
+          size: result.markdown!.length,
+          tokens: Math.round(result.markdown!.length / 4),
+          quality: result.quality?.score,
+          usedPlaywright: result.usedPlaywright,
+          playwrightReason: result.playwrightReason,
+          query: options.query,
+        },
+        null,
+        2
+      )
+    );
   } else if (options.output === 'summary') {
     console.log(`${saveResult.refId}|${saveResult.filepath}`);
   } else {
@@ -197,7 +202,7 @@ async function commandList(output: 'text' | 'json'): Promise<void> {
   }
 
   console.log(`📚 Cached references (${result.references.length}):\n`);
-  
+
   for (const ref of result.references) {
     console.log(`${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}`);
     console.log(`   📅 ${ref.fetchedDate} | 📄 ${Math.round(ref.size / 1024)}KB`);
@@ -270,15 +275,25 @@ async function commandConfig(): Promise<void> {
 // ARGUMENT PARSING
 // ============================================================================
 
-function parseArgs(): { command: string; args: string[]; options: Record<string, any> } {
+interface ParsedOptions {
+  output: 'text' | 'json' | 'summary';
+  verbose: boolean;
+  query?: string;
+  minQuality?: number;
+  tempDir?: string;
+  docsDir?: string;
+  playwrightMode?: 'auto' | 'local' | 'docker';
+}
+
+function parseArgs(): { command: string; args: string[]; options: ParsedOptions } {
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
-    return { command: 'help', args: [], options: {} };
+    return { command: 'help', args: [], options: { output: 'text', verbose: false } };
   }
 
   const command = args[0];
-  const options: Record<string, any> = {
+  const options: ParsedOptions = {
     output: 'text',
     verbose: false,
   };
@@ -292,7 +307,9 @@ function parseArgs(): { command: string; args: string[]; options: Record<string,
       options.query = next;
       i++;
     } else if (arg === '-o' || arg === '--output') {
-      options.output = next;
+      if (next === 'text' || next === 'json' || next === 'summary') {
+        options.output = next;
+      }
       i++;
     } else if (arg === '-v' || arg === '--verbose') {
       options.verbose = true;
@@ -306,10 +323,12 @@ function parseArgs(): { command: string; args: string[]; options: Record<string,
       options.docsDir = next;
       i++;
     } else if (arg === '--playwright') {
-      options.playwrightMode = next;
+      if (next === 'auto' || next === 'local' || next === 'docker') {
+        options.playwrightMode = next;
+      }
       i++;
     } else if (arg === '-h' || arg === '--help') {
-      return { command: 'help', args: [], options: {} };
+      return { command: 'help', args: [], options: { output: 'text', verbose: false } };
     } else if (!arg.startsWith('-')) {
       positionalArgs.push(arg);
     }
@@ -345,7 +364,7 @@ async function main(): Promise<void> {
         break;
 
       case 'list':
-        await commandList(options.output);
+        await commandList(options.output === 'json' ? 'json' : 'text');
         break;
 
       case 'promote':
@@ -353,7 +372,7 @@ async function main(): Promise<void> {
           console.error('❌ Reference ID required. Usage: fetchi promote <ref-id>');
           process.exit(1);
         }
-        await commandPromote(args[0], options.output);
+        await commandPromote(args[0], options.output === 'json' ? 'json' : 'text');
         break;
 
       case 'delete':
@@ -361,14 +380,13 @@ async function main(): Promise<void> {
           console.error('❌ Reference ID required. Usage: fetchi delete <ref-id>');
           process.exit(1);
         }
-        await commandDelete(args[0], options.output);
+        await commandDelete(args[0], options.output === 'json' ? 'json' : 'text');
         break;
 
       case 'config':
         await commandConfig();
         break;
 
-      case 'help':
       default:
         showHelp();
         break;

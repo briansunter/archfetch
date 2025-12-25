@@ -1,7 +1,11 @@
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { FetchiConfigSchema, type FetchiConfig } from './schema.js';
 import { DEFAULT_CONFIG } from './defaults.js';
+
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
 
 const CONFIG_FILES = [
   'fetchi.config.json',
@@ -23,14 +27,14 @@ export function loadConfigFromFile(path: string): Partial<FetchiConfig> {
   try {
     const content = readFileSync(path, 'utf-8');
     return JSON.parse(content);
-  } catch (error) {
+  } catch {
     console.warn(`Warning: Could not load config from ${path}`);
     return {};
   }
 }
 
-export function loadConfigFromEnv(): Partial<FetchiConfig> {
-  const config: any = {};
+export function loadConfigFromEnv(): DeepPartial<FetchiConfig> {
+  const config: DeepPartial<FetchiConfig> = {};
   
   if (process.env.FETCHI_MIN_SCORE) {
     config.quality = config.quality || {};
@@ -51,8 +55,11 @@ export function loadConfigFromEnv(): Partial<FetchiConfig> {
   }
   
   if (process.env.FETCHI_PLAYWRIGHT_MODE) {
-    config.playwright = config.playwright || {};
-    config.playwright.mode = process.env.FETCHI_PLAYWRIGHT_MODE;
+    const mode = process.env.FETCHI_PLAYWRIGHT_MODE;
+    if (mode === 'local' || mode === 'docker' || mode === 'auto') {
+      config.playwright = config.playwright || {};
+      config.playwright.mode = mode;
+    }
   }
   if (process.env.FETCHI_DOCKER_IMAGE) {
     config.playwright = config.playwright || {};
@@ -72,7 +79,8 @@ export interface CliConfigOverrides {
 }
 
 export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig {
-  let config: any = { ...DEFAULT_CONFIG };
+  // Deep copy to avoid mutating DEFAULT_CONFIG
+  let config: FetchiConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
   
   const configFile = findConfigFile();
   if (configFile) {
@@ -105,13 +113,17 @@ export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig 
   return FetchiConfigSchema.parse(config);
 }
 
-function deepMerge(target: any, source: any): any {
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-      result[key] = deepMerge(result[key] || {}, source[key]);
-    } else if (source[key] !== undefined) {
-      result[key] = source[key];
+function deepMerge<T extends Record<string, unknown>>(target: T, source: DeepPartial<T>): T {
+  const result = { ...target } as T;
+  for (const key of Object.keys(source) as (keyof T)[]) {
+    const sourceValue = source[key];
+    if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
+      (result as Record<string, unknown>)[key as string] = deepMerge(
+        (result[key] || {}) as Record<string, unknown>,
+        sourceValue as DeepPartial<Record<string, unknown>>
+      );
+    } else if (sourceValue !== undefined) {
+      (result as Record<string, unknown>)[key as string] = sourceValue;
     }
   }
   return result;

@@ -1,6 +1,5 @@
 import type { FetchiConfig } from '../config/schema.js';
 import { validateMarkdown, type ValidationResult } from '../utils/markdown-validator.js';
-import { cleanMarkdownComplete } from '../utils/markdown-cleaner.js';
 import { fetchWithBrowser, closeBrowser } from './playwright/manager.js';
 import { processHtmlToMarkdown } from './extractor.js';
 

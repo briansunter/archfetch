@@ -25,7 +25,7 @@ const turndown = new TurndownService({
 turndown.use(gfm);
 
 turndown.addRule('removeComments', {
-  filter: (node) => node.nodeType === 8,
+  filter: (node) => (node as unknown as { nodeType: number }).nodeType === 8,
   replacement: () => '',
 });
 
@@ -57,11 +57,13 @@ export async function processHtmlToMarkdown(
       };
     }
 
+    const content = article.content ?? '';
+
     if (verbose) {
-      console.error(`📝 Extracted: "${article.title}" (${article.content.length} chars)`);
+      console.error(`📝 Extracted: "${article.title}" (${content.length} chars)`);
     }
 
-    let markdown = turndown.turndown(article.content);
+    let markdown = turndown.turndown(content);
 
     markdown = cleanMarkdownComplete(markdown);
 
@@ -73,10 +75,10 @@ export async function processHtmlToMarkdown(
 
     return {
       markdown: header + markdown,
-      title: article.title,
-      byline: article.byline || undefined,
-      excerpt: article.excerpt || undefined,
-      siteName: article.siteName || undefined,
+      title: article.title ?? undefined,
+      byline: article.byline ?? undefined,
+      excerpt: article.excerpt ?? undefined,
+      siteName: article.siteName ?? undefined,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

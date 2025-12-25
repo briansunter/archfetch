@@ -1,4 +1,5 @@
-import { chromium, type Browser } from 'playwright-extra';
+import { chromium } from 'playwright-extra';
+import type { Browser } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import type { PlaywrightConfig } from '../../config/schema.js';
 import type { BrowserManager } from './types.js';

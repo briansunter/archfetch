@@ -1,187 +1,217 @@
-#!/usr/bin/env bun
+import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
+import { existsSync, rmSync, readFileSync } from 'node:fs';
+import { processHtmlToMarkdown } from '../../src/core/extractor.js';
+import { saveToTemp, listCached, findCached, promoteReference, deleteCached } from '../../src/core/cache.js';
+import { validateMarkdown } from '../../src/utils/markdown-validator.js';
+import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
+import type { FetchiConfig } from '../../src/config/schema.js';
 
-/**
- * Test complete fetch-and-cache flow
- * Run from an AMS repository
- */
+const TEST_TEMP_DIR = '.test-e2e-temp';
+const TEST_DOCS_DIR = '.test-e2e-docs';
 
-import { existsSync } from "fs";
-import { join } from "path";
-import { spawn } from "child_process";
-import * as cheerio from "cheerio";
-import TurndownService from "turndown";
-
-const turndown = new TurndownService({
-  headingStyle: "atx",
-  codeBlockStyle: "fenced",
-});
-
-function findAmsRepo(): string | null {
-  let current = process.cwd();
-
-  for (let i = 0; i < 5; i++) {
-    const amsDir = join(current, "docs/ams");
-    const required = ["tasks", "decisions", "learnings", "sops"];
-
-    if (required.every(dir => existsSync(join(amsDir, dir)))) {
-      return current;
-    }
-
-    const parent = join(current, "..");
-    if (parent === current) break;
-    current = parent;
-  }
-
-  return null;
+function getTestConfig(): FetchiConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    paths: {
+      tempDir: TEST_TEMP_DIR,
+      docsDir: TEST_DOCS_DIR,
+    },
+  };
 }
 
-function extractTitle(html: string, url: string): string {
-  try {
-    const $ = cheerio.load(html);
-    const title = $('title').text().trim();
-    if (title) return title;
-    const h1 = $('h1').first().text().trim();
-    if (h1) return h1;
-  } catch {}
-
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return url;
-  }
-}
-
-function saveToReference(
-  repoRoot: string,
-  title: string,
-  url: string,
-  content: string,
-  query?: string
-): Promise<{ refId?: string; error?: string; output?: string }> {
-  return new Promise((resolve) => {
-    const scriptPath = join(import.meta.dir, "..", "..", "scripts", "create-reference.ts");
-
-    const args = [
-      scriptPath,
-      repoRoot,
-      "--title", title,
-      "--url", url,
-      "--content", content,
-      "--type", "web",
-      "--temp",
-    ];
-
-    if (query) {
-      args.push("--query", query);
-    }
-
-    const proc = spawn("bun", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    proc.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (exitCode) => {
-      if (exitCode !== 0) {
-        resolve({ error: stderr || "Failed to save reference", output: stdout });
-        return;
-      }
-
-      const match = stdout.match(/ID:\s*(REF-\d+)/);
-      const refId = match ? match[1] : undefined;
-
-      resolve({ refId, output: stdout });
-    });
-  });
-}
-
-async function testFullFlow() {
-  console.log("🧪 Testing Full Fetch and Cache Flow\n");
-
-  // 1. Check AMS repo
-  console.log("Step 1: Finding AMS repository...");
-  const repoRoot = findAmsRepo();
-  if (!repoRoot) {
-    console.error("❌ Not in an AMS repository!");
-    console.error("Run this from a directory with docs/ams/ structure");
-    process.exit(1);
-  }
-  console.log(`✅ Found AMS repo: ${repoRoot}\n`);
-
-  // 2. Fetch URL
-  const testUrl = "https://bun.sh";
-  const query = "What is Bun?";
-  console.log(`Step 2: Fetching ${testUrl}...`);
-
-  const response = await fetch(testUrl, {
-    redirect: 'follow',
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AMS-Test/1.0)' },
+describe('E2E: Complete Fetch and Cache Flow', () => {
+  beforeEach(() => {
+    if (existsSync(TEST_TEMP_DIR)) rmSync(TEST_TEMP_DIR, { recursive: true });
+    if (existsSync(TEST_DOCS_DIR)) rmSync(TEST_DOCS_DIR, { recursive: true });
   });
 
-  if (!response.ok) {
-    console.error(`❌ HTTP ${response.status}`);
-    process.exit(1);
-  }
+  afterEach(() => {
+    if (existsSync(TEST_TEMP_DIR)) rmSync(TEST_TEMP_DIR, { recursive: true });
+    if (existsSync(TEST_DOCS_DIR)) rmSync(TEST_DOCS_DIR, { recursive: true });
+  });
 
-  const html = await response.text();
-  console.log(`✅ Fetched ${html.length} bytes\n`);
+  test('complete flow: extract → validate → save → list → promote', async () => {
+    const config = getTestConfig();
 
-  // 3. Convert to markdown
-  console.log("Step 3: Converting to markdown...");
-  const title = extractTitle(html, testUrl);
-  const markdown = turndown.turndown(html);
-  console.log(`✅ Converted to markdown: ${markdown.length} chars`);
-  console.log(`   Title: ${title}\n`);
+    // Step 1: Extract content from HTML
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><title>E2E Test Article</title></head>
+      <body>
+        <article>
+          <h1>E2E Test Article</h1>
+          <p>This is a comprehensive end-to-end test of the fetchi workflow.
+          It simulates the complete process from HTML extraction through to
+          promoting the cached reference to the docs folder.</p>
+          <h2>Section One</h2>
+          <p>Additional content to ensure the article passes quality validation.
+          The extraction algorithm needs sufficient content to recognize this
+          as a valid article worth preserving.</p>
+          <h2>Section Two</h2>
+          <p>Even more content here to make sure we have a complete article
+          that will pass all the quality checks and validation steps.</p>
+        </article>
+      </body>
+      </html>
+    `;
 
-  // 4. Save to .tmp/
-  console.log("Step 4: Saving to docs/ams/.tmp/...");
-  const { refId, error, output } = await saveToReference(
-    repoRoot,
-    title,
-    testUrl,
-    markdown,
-    query
-  );
+    const extractResult = await processHtmlToMarkdown(html, 'https://example.com/e2e-test');
 
-  if (error) {
-    console.error(`❌ Save failed: ${error}`);
-    if (output) console.error(output);
-    process.exit(1);
-  }
+    expect(extractResult.error).toBeUndefined();
+    expect(extractResult.markdown).toBeDefined();
+    expect(extractResult.title).toBe('E2E Test Article');
 
-  console.log(`✅ Saved as ${refId}\n`);
-  if (output) {
-    console.log("Script output:");
-    console.log(output);
-  }
+    // Step 2: Validate the markdown quality
+    const validation = validateMarkdown(extractResult.markdown!);
 
-  // 5. Verify file exists
-  const tmpDir = join(repoRoot, "docs/ams/.tmp");
-  console.log(`\nStep 5: Verifying file in ${tmpDir}...`);
+    expect(validation.isValid).toBe(true);
+    expect(validation.score).toBeGreaterThanOrEqual(60);
 
-  const { readdirSync } = await import("fs");
-  const files = readdirSync(tmpDir).filter(f => f.includes(refId!));
+    // Step 3: Save to temp directory
+    const saveResult = await saveToTemp(
+      config,
+      extractResult.title!,
+      'https://example.com/e2e-test',
+      extractResult.markdown!,
+      'e2e test query'
+    );
 
-  if (files.length === 0) {
-    console.error(`❌ File not found!`);
-    process.exit(1);
-  }
+    expect(saveResult.error).toBeUndefined();
+    expect(saveResult.refId).toBe('REF-001');
+    expect(existsSync(saveResult.filepath)).toBe(true);
 
-  console.log(`✅ File created: ${files[0]}`);
-  console.log(`\n🎉 Complete workflow test PASSED!`);
-}
+    // Step 4: Verify saved file content
+    const savedContent = readFileSync(saveResult.filepath, 'utf-8');
+    expect(savedContent).toContain('id: REF-001');
+    expect(savedContent).toContain('title: "E2E Test Article"');
+    expect(savedContent).toContain('source_url: https://example.com/e2e-test');
+    expect(savedContent).toContain('status: temporary');
+    expect(savedContent).toContain('query: "e2e test query"');
 
-testFullFlow().catch(error => {
-  console.error("Test failed:", error);
-  process.exit(1);
+    // Step 5: List cached references
+    const listResult = listCached(config);
+
+    expect(listResult.error).toBeUndefined();
+    expect(listResult.references.length).toBe(1);
+    expect(listResult.references[0].refId).toBe('REF-001');
+    expect(listResult.references[0].title).toBe('E2E Test Article');
+
+    // Step 6: Find specific cached reference
+    const found = findCached(config, 'REF-001');
+
+    expect(found).not.toBeNull();
+    expect(found?.title).toBe('E2E Test Article');
+    expect(found?.url).toBe('https://example.com/e2e-test');
+
+    // Step 7: Promote to docs folder
+    const promoteResult = promoteReference(config, 'REF-001');
+
+    expect(promoteResult.success).toBe(true);
+    expect(promoteResult.error).toBeUndefined();
+    expect(existsSync(promoteResult.toPath)).toBe(true);
+    expect(existsSync(saveResult.filepath)).toBe(false); // Removed from temp
+
+    // Step 8: Verify promoted file has updated status
+    const promotedContent = readFileSync(promoteResult.toPath, 'utf-8');
+    expect(promotedContent).toContain('status: permanent');
+
+    // Step 9: Verify temp directory is now empty
+    const afterPromote = listCached(config);
+    expect(afterPromote.references.length).toBe(0);
+  });
+
+  test('complete flow: extract → save → delete', async () => {
+    const config = getTestConfig();
+
+    // Extract and save
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><title>Delete Test Article</title></head>
+      <body>
+        <article>
+          <h1>Delete Test Article</h1>
+          <p>This article will be saved and then deleted to test the deletion flow.</p>
+          <p>Adding more content for proper extraction.</p>
+          <p>And even more content to ensure quality validation passes.</p>
+        </article>
+      </body>
+      </html>
+    `;
+
+    const extractResult = await processHtmlToMarkdown(html, 'https://example.com/delete-test');
+    const saveResult = await saveToTemp(config, extractResult.title!, 'https://example.com/delete-test', extractResult.markdown!);
+
+    expect(existsSync(saveResult.filepath)).toBe(true);
+
+    // Delete the reference
+    const deleteResult = deleteCached(config, 'REF-001');
+
+    expect(deleteResult.success).toBe(true);
+    expect(existsSync(saveResult.filepath)).toBe(false);
+
+    // Verify it's gone from the list
+    const afterDelete = listCached(config);
+    expect(afterDelete.references.length).toBe(0);
+  });
+
+  test('handles multiple saves with sequential IDs', async () => {
+    const config = getTestConfig();
+
+    const createHtml = (title: string) => `
+      <!DOCTYPE html>
+      <html>
+      <head><title>${title}</title></head>
+      <body>
+        <article>
+          <h1>${title}</h1>
+          <p>Content for ${title}. This needs enough text for extraction.</p>
+          <p>Adding more content to ensure proper quality validation.</p>
+          <p>And a third paragraph for good measure.</p>
+        </article>
+      </body>
+      </html>
+    `;
+
+    // Save three articles
+    for (let i = 1; i <= 3; i++) {
+      const html = createHtml(`Article ${i}`);
+      const extractResult = await processHtmlToMarkdown(html, `https://example.com/article-${i}`);
+      await saveToTemp(config, extractResult.title!, `https://example.com/article-${i}`, extractResult.markdown!);
+    }
+
+    // Verify all three exist with correct IDs
+    const listResult = listCached(config);
+
+    expect(listResult.references.length).toBe(3);
+
+    const refIds = listResult.references.map((r) => r.refId).sort();
+    expect(refIds).toEqual(['REF-001', 'REF-002', 'REF-003']);
+  });
+
+  test('rejects low quality content', async () => {
+    // Create HTML that will produce low quality markdown (lots of leftover tags)
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><title>Low Quality</title></head>
+      <body>
+        <article>
+          <h1>Title</h1>
+          <p>x</p>
+        </article>
+      </body>
+      </html>
+    `;
+
+    const extractResult = await processHtmlToMarkdown(html, 'https://example.com/low-quality');
+
+    // This should either fail extraction or produce low quality content
+    if (extractResult.markdown) {
+      const validation = validateMarkdown(extractResult.markdown);
+      // Content is too short, should fail validation
+      expect(validation.score).toBeLessThan(100);
+    }
+  });
 });

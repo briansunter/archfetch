@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'fs';
-import { writeFile, unlink } from 'fs/promises';
-import { join, basename, resolve } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { join, basename } from 'node:path';
 import type { FetchiConfig } from '../config/schema.js';
 
 export interface CachedReference {
