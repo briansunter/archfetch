@@ -52,5 +52,12 @@
     "article-extraction"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/briansunter/fetchi.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
