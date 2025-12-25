@@ -1,0 +1,273 @@
+---
+name: Fetchi
+description: Use when working with @briansunter/fetchi CLI for URL fetching, article extraction, and cache management. Triggers: fetching URLs, batch processing, managing cached references, promoting/deleting content, or integrating fetchi into automation pipelines.
+---
+
+# Fetchi
+
+Guide for using the Fetchi CLI tool to fetch web content, extract articles, and manage cached references.
+
+## Overview
+
+Fetchi converts web pages to clean markdown with automatic JavaScript rendering fallback via Playwright when needed.
+
+## Installation
+
+```bash
+# Install globally
+bun install -g @briansunter/fetchi
+
+# Or use via bunx
+bunx @briansunter/fetchi <command>
+```
+
+## Commands
+
+### fetch
+
+Fetch URL and save to temp folder.
+
+```bash
+bunx @briansunter/fetchi fetch <url> [options]
+```
+
+**Options:**
+- `-q, --query <text>` - Search query (saved as metadata)
+- `-o, --output <format>` - Output format (default: text)
+  - `text` - Plain text (LLM-friendly)
+  - `json` - Structured JSON
+  - `path` - Just the filepath
+  - `summary` - REF-ID|filepath format
+- `--pretty` - Human-friendly output with emojis
+- `-v, --verbose` - Show detailed output
+- `--min-quality <n>` - Minimum quality score 0-100 (default: 60)
+- `--temp-dir <path>` - Temp folder (default: .tmp)
+- `--docs-dir <path>` - Docs folder (default: docs/ai/references)
+- `--playwright <mode>` - Playwright mode: auto, local, docker
+
+**Examples:**
+
+```bash
+# Basic fetch (plain text output for LLMs)
+bunx @briansunter/fetchi fetch https://example.com/article
+
+# Get just the filepath
+bunx @briansunter/fetchi fetch https://example.com -o path
+
+# Human-friendly output with emojis
+bunx @briansunter/fetchi fetch https://example.com --pretty
+
+# JSON output for scripting
+bunx @briansunter/fetchi fetch https://example.com -o json
+
+# With search query metadata
+bunx @briansunter/fetchi fetch https://example.com -q "search term"
+
+# Verbose mode to see what's happening
+bunx @briansunter/fetchi fetch https://example.com -v
+```
+
+**Process:** HTTP fetch → Extract content → Quality score (0-100) → Playwright retry if score < 85
+
+### list
+
+List all cached references.
+
+```bash
+bunx @briansunter/fetchi list [options]
+```
+
+**Options:**
+- `-o, --output <format>` - Output format: text, json
+- `--pretty` - Human-friendly output with emojis
+
+**Examples:**
+
+```bash
+# List references (plain text)
+bunx @briansunter/fetchi list
+
+# Pretty output with emojis
+bunx @briansunter/fetchi list --pretty
+
+# JSON output
+bunx @briansunter/fetchi list -o json
+```
+
+### promote
+
+Move reference from temp to docs folder.
+
+```bash
+bunx @briansunter/fetchi promote <ref-id> [options]
+```
+
+**Options:**
+- `-o, --output <format>` - Output format: text, json
+- `--pretty` - Human-friendly output with emojis
+
+**Examples:**
+
+```bash
+bunx @briansunter/fetchi promote REF-001
+bunx @briansunter/fetchi promote REF-001 --pretty
+bunx @briansunter/fetchi promote REF-001 -o json
+```
+
+### delete
+
+Delete a cached reference.
+
+```bash
+bunx @briansunter/fetchi delete <ref-id> [options]
+```
+
+**Options:**
+- `-o, --output <format>` - Output format: text, json
+- `--pretty` - Human-friendly output with emojis
+
+**Examples:**
+
+```bash
+bunx @briansunter/fetchi delete REF-001
+bunx @briansunter/fetchi delete REF-001 --pretty
+```
+
+### config
+
+Show current configuration.
+
+```bash
+bunx @briansunter/fetchi config
+```
+
+Displays all config settings including quality thresholds, paths, and Playwright mode.
+
+## Workflow Patterns
+
+### Single Article
+
+```bash
+bunx @briansunter/fetchi fetch https://example.com/guide
+cat .tmp/REF-001-guide.md  # Review
+bunx @briansunter/fetchi promote REF-001  # If good
+```
+
+### Batch Fetch
+
+```bash
+for url in "url1" "url2" "url3"; do
+  bunx @briansunter/fetchi fetch "$url"
+done
+
+bunx @briansunter/fetchi list  # Review all
+bunx @briansunter/fetchi promote REF-001  # Promote desired
+```
+
+### Cleanup Temp References
+
+```bash
+bunx @briansunter/fetchi list
+bunx @briansunter/fetchi delete REF-001  # Delete unwanted
+```
+
+### Scripting with JSON Output
+
+```bash
+# Fetch and parse result
+RESULT=$(bunx @briansunter/fetchi fetch https://example.com -o json)
+REF_ID=$(echo "$RESULT" | jq -r '.refId')
+FILEPATH=$(echo "$RESULT" | jq -r '.filepath')
+QUALITY=$(echo "$RESULT" | jq -r '.quality')
+
+# Conditional promote based on quality
+if (( QUALITY >= 85 )); then
+  bunx @briansunter/fetchi promote "$REF_ID"
+fi
+```
+
+## Configuration
+
+### Config File Priority
+
+1. CLI arguments
+2. Environment variables
+3. `fetchi.config.json`
+4. `.fetchirc`
+5. `.fetchirc.json`
+
+### Create `fetchi.config.json`
+
+```json
+{
+  "quality": {
+    "minScore": 60,
+    "jsRetryThreshold": 85
+  },
+  "playwright": {
+    "mode": "auto"
+  },
+  "paths": {
+    "tempDir": ".tmp",
+    "docsDir": "docs/ai/references"
+  }
+}
+```
+
+### Environment Variables
+
+```bash
+export FETCHI_MIN_SCORE=60
+export FETCHI_TEMP_DIR=".tmp"
+export FETCHI_DOCS_DIR="docs/ai/references"
+export FETCHI_PLAYWRIGHT_MODE="auto"
+```
+
+### Quality Thresholds
+
+- **minScore** (default: 60) - Below this, content rejected
+- **jsRetryThreshold** (default: 85) - Above this, skip Playwright
+
+### Playwright Modes
+
+- `auto` - Docker if available, fallback to local (default)
+- `docker` - Docker only
+- `local` - Local Playwright only
+
+## MCP Server
+
+```bash
+bunx @briansunter/fetchi
+# Tools: fetch_url, list_cached, promote_reference, delete_cached
+```
+
+## File Format
+
+Fetched files include YAML frontmatter:
+
+```markdown
+---
+ref_id: REF-001
+url: https://example.com/article
+status: temporary
+fetched_at: 2025-12-25T10:00:00Z
+quality_score: 87
+playwright_used: false
+query: search term
+---
+
+# Article Title
+
+Content...
+```
+
+## Quality Scoring
+
+- **≥ 85** - Excellent, ready to promote
+- **60-84** - Good, review manually
+- **< 60** - Poor, consider deleting
+
+## References
+
+- Project: https://github.com/briansunter/fetchi
+- MCP: https://modelcontextprotocol.io
