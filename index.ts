@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Sofetch MCP Server v3.0
+ * Arcfetch MCP Server
  *
  * Tools:
  * - fetch_url: Fetch URL with automatic JS fallback, save to temp
@@ -9,6 +9,7 @@
  * - delete_cached: Delete a cached reference
  */
 
+import { getVersion } from './src/utils/version.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -18,8 +19,8 @@ import { saveToTemp, listCached, promoteReference, deleteCached } from './src/co
 
 const server = new Server(
   {
-    name: 'archfetch',
-    version: '3.0.0',
+    name: 'arcfetch',
+    version: getVersion(),
   },
   {
     capabilities: {

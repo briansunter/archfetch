@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { getVersion } from './src/utils/version.js';
 import { loadConfig } from './src/config/index.js';
 import { fetchUrl, closeBrowser } from './src/core/pipeline.js';
 import { saveToTemp, listCached, promoteReference, deleteCached } from './src/core/cache.js';
@@ -10,7 +11,7 @@ import { saveToTemp, listCached, promoteReference, deleteCached } from './src/co
 
 function showHelp(): void {
   console.log(`
-Sofetch v3.0 - Fetch URLs and cache as clean markdown
+Arcfetch v${getVersion()} - Fetch URLs and cache as clean markdown
 
 USAGE:
     archfetch <command> [options]
@@ -187,7 +188,7 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     if (result.usedPlaywright) {
       console.log(`**Playwright**: Yes (${result.playwrightReason})`);
     }
-    console.log(`\n💡 To promote to docs: archfetch promote ${saveResult.refId}`);
+    console.log(`\n💡 To promote to docs: arcfetch promote ${saveResult.refId}`);
   } else {
     // Plain output (LLM-friendly, default)
     console.log(`Cached: ${saveResult.refId}`);
@@ -238,8 +239,8 @@ async function commandList(output: 'text' | 'json', pretty: boolean): Promise<vo
       console.log(`   🔗 ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
       console.log('');
     }
-    console.log(`💡 To promote: archfetch promote <ref-id>`);
-    console.log(`💡 To delete: archfetch delete <ref-id>`);
+    console.log(`💡 To promote: arcfetch promote <ref-id>`);
+    console.log(`💡 To delete: arcfetch delete <ref-id>`);
   } else {
     console.log(`Cached references (${result.references.length}):\n`);
     for (const ref of result.references) {
@@ -403,7 +404,7 @@ async function main(): Promise<void> {
     switch (command) {
       case 'fetch':
         if (args.length === 0) {
-          console.error('Error: URL required. Usage: archfetch fetch <url>');
+          console.error('Error: URL required. Usage: arcfetch fetch <url>');
           process.exit(1);
         }
         await commandFetch({
@@ -426,7 +427,7 @@ async function main(): Promise<void> {
 
       case 'promote':
         if (args.length === 0) {
-          console.error('Error: Reference ID required. Usage: archfetch promote <ref-id>');
+          console.error('Error: Reference ID required. Usage: arcfetch promote <ref-id>');
           process.exit(1);
         }
         await commandPromote(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
@@ -434,7 +435,7 @@ async function main(): Promise<void> {
 
       case 'delete':
         if (args.length === 0) {
-          console.error('Error: Reference ID required. Usage: archfetch delete <ref-id>');
+          console.error('Error: Reference ID required. Usage: arcfetch delete <ref-id>');
           process.exit(1);
         }
         await commandDelete(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
