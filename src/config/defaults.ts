@@ -1,4 +1,4 @@
-import type { FetchiConfig } from './schema.js';
+import type { FetchiConfig } from './schema';
 
 export const DEFAULT_CONFIG: FetchiConfig = {
   quality: {

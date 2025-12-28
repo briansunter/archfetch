@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { findConfigFile, loadConfigFromFile, loadConfigFromEnv, loadConfig } from '../../src/config/loader.js';
-import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
+import { findConfigFile, loadConfigFromFile, loadConfigFromEnv, loadConfig } from '../../src/config/loader';
+import { DEFAULT_CONFIG } from '../../src/config/defaults';
 
 const TEST_DIR = '.test-loader-temp';
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
+import { DEFAULT_CONFIG } from '../../src/config/defaults';
 
 // We need to test the pipeline logic, so we'll import and test with mocked dependencies
 // Since the module has side effects (imports), we test the logic patterns

@@ -2,7 +2,7 @@ import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
-import { cleanMarkdownComplete } from '../utils/markdown-cleaner.js';
+import { cleanMarkdownComplete } from '../utils/markdown-cleaner';
 
 export interface ExtractionResult {
   markdown?: string;

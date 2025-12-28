@@ -1,7 +1,7 @@
-import type { FetchiConfig } from '../config/schema.js';
-import { validateMarkdown, type ValidationResult } from '../utils/markdown-validator.js';
-import { fetchWithBrowser, closeBrowser } from './playwright/manager.js';
-import { processHtmlToMarkdown } from './extractor.js';
+import type { FetchiConfig } from '../config/schema';
+import { validateMarkdown, type ValidationResult } from '../utils/markdown-validator';
+import { fetchWithBrowser, closeBrowser } from './playwright/manager';
+import { processHtmlToMarkdown } from './extractor';
 
 export interface FetchResult {
   success: boolean;

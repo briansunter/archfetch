@@ -1,6 +1,6 @@
-import type { PlaywrightConfig } from '../../config/schema.js';
-import type { BrowserManager, FetchWithBrowserResult } from './types.js';
-import { LocalBrowserManager } from './local.js';
+import type { PlaywrightConfig } from '../../config/schema';
+import type { BrowserManager, FetchWithBrowserResult } from './types';
+import { LocalBrowserManager } from './local';
 
 let currentManager: BrowserManager | null = null;
 

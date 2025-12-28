@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FetchiConfigSchema, type FetchiConfig } from './schema.js';
-import { DEFAULT_CONFIG } from './defaults.js';
+import { FetchiConfigSchema, type FetchiConfig } from './schema';
+import { DEFAULT_CONFIG } from './defaults';
 
 type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];

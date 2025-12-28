@@ -9,13 +9,13 @@
  * - delete_cached: Delete a cached reference
  */
 
-import { getVersion } from './src/utils/version.js';
+import { getVersion } from './src/utils/version';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { loadConfig } from './src/config/index.js';
-import { fetchUrl, closeBrowser } from './src/core/pipeline.js';
-import { saveToTemp, listCached, promoteReference, deleteCached } from './src/core/cache.js';
+import { loadConfig } from './src/config/index';
+import { fetchUrl, closeBrowser } from './src/core/pipeline';
+import { saveToTemp, listCached, promoteReference, deleteCached, extractLinksFromCached } from './src/core/cache';
 
 const server = new Server(
   {
@@ -66,6 +66,10 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
               description: 'Output format: summary (default), path (filepath only), json (structured data)',
               enum: ['summary', 'path', 'json'],
             },
+            refetch: {
+              type: 'boolean',
+              description: 'Force re-fetch and update even if URL already cached (default: false)',
+            },
           },
           required: ['url'],
         },
@@ -93,7 +97,7 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
           properties: {
             refId: {
               type: 'string',
-              description: 'Reference ID (e.g., REF-001)',
+              description: 'Reference ID (the filename slug, e.g., "how-to-build-react-apps")',
             },
             docsDir: {
               type: 'string',
@@ -111,7 +115,49 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
           properties: {
             refId: {
               type: 'string',
-              description: 'Reference ID to delete (e.g., REF-001)',
+              description: 'Reference ID to delete (the filename slug)',
+            },
+          },
+          required: ['refId'],
+        },
+      },
+      {
+        name: 'extract_links',
+        description: 'Extract all http/https links from a cached reference markdown. Returns list of links with their text and URLs.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            refId: {
+              type: 'string',
+              description: 'Reference ID to extract links from (the filename slug)',
+            },
+            outputFormat: {
+              type: 'string',
+              description: 'Output format: summary (default) or json',
+              enum: ['summary', 'json'],
+            },
+          },
+          required: ['refId'],
+        },
+      },
+      {
+        name: 'fetch_links',
+        description: 'Fetch all links from a cached reference. Extracts links and fetches each one, caching as new references. Uses parallel fetching (max 5 concurrent).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            refId: {
+              type: 'string',
+              description: 'Reference ID to extract and fetch links from',
+            },
+            refetch: {
+              type: 'boolean',
+              description: 'Force re-fetch even if URLs already cached (default: false)',
+            },
+            outputFormat: {
+              type: 'string',
+              description: 'Output format: summary (default) or json',
+              enum: ['summary', 'json'],
             },
           },
           required: ['refId'],
@@ -133,6 +179,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           minQuality?: number;
           tempDir?: string;
           outputFormat?: 'summary' | 'path' | 'json';
+          refetch?: boolean;
         }
       );
 
@@ -158,6 +205,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       );
 
+    case 'extract_links':
+      return handleExtractLinks(
+        args as {
+          refId: string;
+          outputFormat?: 'summary' | 'json';
+        }
+      );
+
+    case 'fetch_links':
+      return handleFetchLinks(
+        args as {
+          refId: string;
+          refetch?: boolean;
+          outputFormat?: 'summary' | 'json';
+        }
+      );
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -169,6 +233,7 @@ async function handleFetchUrl(args: {
   minQuality?: number;
   tempDir?: string;
   outputFormat?: 'summary' | 'path' | 'json';
+  refetch?: boolean;
 }) {
   const config = loadConfig({
     minQuality: args.minQuality,
@@ -189,11 +254,39 @@ async function handleFetchUrl(args: {
     };
   }
 
-  const saveResult = await saveToTemp(config, result.title!, args.url, result.markdown!, args.query);
+  const saveResult = await saveToTemp(config, result.title!, args.url, result.markdown!, args.query, args.refetch);
 
   if (saveResult.error) {
     return {
       content: [{ type: 'text', text: `Error: Save failed: ${saveResult.error}` }],
+    };
+  }
+
+  // Handle already exists case
+  if (saveResult.alreadyExists) {
+    const outputFormat = args.outputFormat || 'summary';
+    if (outputFormat === 'path') {
+      return { content: [{ type: 'text', text: saveResult.filepath }] };
+    }
+    if (outputFormat === 'json') {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            alreadyExists: true,
+            refId: saveResult.refId,
+            filepath: saveResult.filepath,
+            message: 'URL already fetched. Use refetch: true to update.',
+          }, null, 2),
+        }],
+      };
+    }
+    return {
+      content: [{
+        type: 'text',
+        text: `Already cached: ${saveResult.refId}\nFilepath: ${saveResult.filepath}\n\nUse refetch: true to update.`,
+      }],
     };
   }
 
@@ -317,6 +410,155 @@ async function handleDeleteCached(args: { refId: string }) {
         text: `Deleted: ${args.refId}\nFile: ${result.filepath}`,
       },
     ],
+  };
+}
+
+async function handleExtractLinks(args: { refId: string; outputFormat?: 'summary' | 'json' }) {
+  const config = loadConfig();
+  const result = extractLinksFromCached(config, args.refId);
+
+  if (result.error) {
+    return {
+      content: [{ type: 'text', text: `Error: ${result.error}` }],
+    };
+  }
+
+  if (args.outputFormat === 'json') {
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          success: true,
+          sourceRef: result.sourceRef,
+          count: result.count,
+          links: result.links,
+        }, null, 2),
+      }],
+    };
+  }
+
+  if (result.count === 0) {
+    return {
+      content: [{ type: 'text', text: `No links found in ${args.refId}` }],
+    };
+  }
+
+  let text = `Found ${result.count} links in ${args.refId}:\n\n`;
+  for (const link of result.links) {
+    text += `${link.text} | ${link.href}\n`;
+  }
+
+  return {
+    content: [{ type: 'text', text: text.trim() }],
+  };
+}
+
+interface FetchLinksResult {
+  url: string;
+  status: 'new' | 'cached' | 'failed';
+  refId?: string;
+  error?: string;
+}
+
+async function handleFetchLinks(args: { refId: string; refetch?: boolean; outputFormat?: 'summary' | 'json' }) {
+  const config = loadConfig();
+  const linksResult = extractLinksFromCached(config, args.refId);
+
+  if (linksResult.error) {
+    return {
+      content: [{ type: 'text', text: `Error: ${linksResult.error}` }],
+    };
+  }
+
+  if (linksResult.count === 0) {
+    if (args.outputFormat === 'json') {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'No links to fetch', results: [] }, null, 2) }],
+      };
+    }
+    return {
+      content: [{ type: 'text', text: `No links found in ${args.refId}` }],
+    };
+  }
+
+  const results: FetchLinksResult[] = [];
+  const concurrency = 5;
+  const urls = linksResult.links.map(l => l.href);
+
+  // Process in batches of 5
+  for (let i = 0; i < urls.length; i += concurrency) {
+    const batch = urls.slice(i, i + concurrency);
+    const batchPromises = batch.map(async (url): Promise<FetchLinksResult> => {
+      try {
+        const fetchResult = await fetchUrl(url, config, false);
+
+        if (!fetchResult.success) {
+          return { url, status: 'failed', error: fetchResult.error };
+        }
+
+        const saveResult = await saveToTemp(
+          config,
+          fetchResult.title!,
+          url,
+          fetchResult.markdown!,
+          undefined,
+          args.refetch
+        );
+
+        if (saveResult.error) {
+          return { url, status: 'failed', error: saveResult.error };
+        }
+
+        if (saveResult.alreadyExists) {
+          return { url, status: 'cached', refId: saveResult.refId };
+        }
+
+        return { url, status: 'new', refId: saveResult.refId };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { url, status: 'failed', error: message };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults);
+  }
+
+  // Close browser after all fetches
+  await closeBrowser();
+
+  const newCount = results.filter(r => r.status === 'new').length;
+  const cachedCount = results.filter(r => r.status === 'cached').length;
+  const failedCount = results.filter(r => r.status === 'failed').length;
+
+  if (args.outputFormat === 'json') {
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          success: true,
+          sourceRef: args.refId,
+          summary: { new: newCount, cached: cachedCount, failed: failedCount },
+          results,
+        }, null, 2),
+      }],
+    };
+  }
+
+  let text = `Fetched links from ${args.refId}:\n\n`;
+  for (const r of results) {
+    if (r.status === 'new') {
+      text += `new: ${r.refId}\n`;
+    } else if (r.status === 'cached') {
+      text += `cached: ${r.refId}\n`;
+    } else {
+      text += `failed: ${r.url} - ${r.error}\n`;
+    }
+  }
+  text += `\nSummary: ${newCount} new, ${cachedCount} cached, ${failedCount} failed`;
+
+  return {
+    content: [{ type: 'text', text }],
   };
 }
 

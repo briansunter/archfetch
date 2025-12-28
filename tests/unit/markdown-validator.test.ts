@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { validateMarkdown, formatValidationReport } from '../../src/utils/markdown-validator.js';
+import { validateMarkdown, formatValidationReport } from '../../src/utils/markdown-validator';
 
 describe('markdown-validator', () => {
   describe('validateMarkdown', () => {

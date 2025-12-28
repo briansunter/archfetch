@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { processHtmlToMarkdown } from '../../src/core/extractor.js';
+import { processHtmlToMarkdown } from '../../src/core/extractor';
 
 describe('HTML to Markdown extraction', () => {
   test('extracts article content from well-structured HTML', async () => {

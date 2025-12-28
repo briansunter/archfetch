@@ -1,10 +1,10 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { existsSync, rmSync, readFileSync } from 'node:fs';
-import { processHtmlToMarkdown } from '../../src/core/extractor.js';
-import { saveToTemp, listCached, findCached, promoteReference, deleteCached } from '../../src/core/cache.js';
-import { validateMarkdown } from '../../src/utils/markdown-validator.js';
-import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
-import type { FetchiConfig } from '../../src/config/schema.js';
+import { processHtmlToMarkdown } from '../../src/core/extractor';
+import { saveToTemp, listCached, findCached, promoteReference, deleteCached } from '../../src/core/cache';
+import { validateMarkdown } from '../../src/utils/markdown-validator';
+import { DEFAULT_CONFIG } from '../../src/config/defaults';
+import type { FetchiConfig } from '../../src/config/schema';
 
 const TEST_TEMP_DIR = '.test-e2e-temp';
 const TEST_DOCS_DIR = '.test-e2e-docs';
@@ -78,12 +78,11 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
     );
 
     expect(saveResult.error).toBeUndefined();
-    expect(saveResult.refId).toBe('REF-001');
+    expect(saveResult.refId).toBe('e2e-test-article');
     expect(existsSync(saveResult.filepath)).toBe(true);
 
     // Step 4: Verify saved file content
     const savedContent = readFileSync(saveResult.filepath, 'utf-8');
-    expect(savedContent).toContain('id: REF-001');
     expect(savedContent).toContain('title: "E2E Test Article"');
     expect(savedContent).toContain('source_url: https://example.com/e2e-test');
     expect(savedContent).toContain('status: temporary');
@@ -94,18 +93,18 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
 
     expect(listResult.error).toBeUndefined();
     expect(listResult.references.length).toBe(1);
-    expect(listResult.references[0].refId).toBe('REF-001');
+    expect(listResult.references[0].refId).toBe('e2e-test-article');
     expect(listResult.references[0].title).toBe('E2E Test Article');
 
     // Step 6: Find specific cached reference
-    const found = findCached(config, 'REF-001');
+    const found = findCached(config, 'e2e-test-article');
 
     expect(found).not.toBeNull();
     expect(found?.title).toBe('E2E Test Article');
     expect(found?.url).toBe('https://example.com/e2e-test');
 
     // Step 7: Promote to docs folder
-    const promoteResult = promoteReference(config, 'REF-001');
+    const promoteResult = promoteReference(config, 'e2e-test-article');
 
     expect(promoteResult.success).toBe(true);
     expect(promoteResult.error).toBeUndefined();
@@ -146,7 +145,7 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
     expect(existsSync(saveResult.filepath)).toBe(true);
 
     // Delete the reference
-    const deleteResult = deleteCached(config, 'REF-001');
+    const deleteResult = deleteCached(config, 'delete-test-article');
 
     expect(deleteResult.success).toBe(true);
     expect(existsSync(saveResult.filepath)).toBe(false);
@@ -181,13 +180,13 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
       await saveToTemp(config, extractResult.title!, `https://example.com/article-${i}`, extractResult.markdown!);
     }
 
-    // Verify all three exist with correct IDs
+    // Verify all three exist with correct IDs (slug-based)
     const listResult = listCached(config);
 
     expect(listResult.references.length).toBe(3);
 
     const refIds = listResult.references.map((r) => r.refId).sort();
-    expect(refIds).toEqual(['REF-001', 'REF-002', 'REF-003']);
+    expect(refIds).toEqual(['article-1', 'article-2', 'article-3']);
   });
 
   test('rejects low quality content', async () => {

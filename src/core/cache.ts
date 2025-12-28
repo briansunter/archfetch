@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
-import type { FetchiConfig } from '../config/schema.js';
+import type { FetchiConfig } from '../config/schema';
 
 export interface CachedReference {
   refId: string;
@@ -16,6 +16,7 @@ export interface CachedReference {
 export interface SaveResult {
   refId: string;
   filepath: string;
+  alreadyExists?: boolean;
   error?: string;
 }
 
@@ -38,29 +39,11 @@ export interface DeleteResult {
 }
 
 /**
- * Get the next available reference ID
+ * Find a cached reference by URL
  */
-export function getNextRefId(dir: string): string {
-  if (!existsSync(dir)) {
-    return 'REF-001';
-  }
-
-  try {
-    const files = readdirSync(dir);
-    let maxId = 0;
-
-    for (const file of files) {
-      const match = file.match(/REF-(\d+)/);
-      if (match) {
-        const id = parseInt(match[1], 10);
-        if (id > maxId) maxId = id;
-      }
-    }
-
-    return `REF-${String(maxId + 1).padStart(3, '0')}`;
-  } catch {
-    return 'REF-001';
-  }
+export function findByUrl(config: FetchiConfig, url: string): CachedReference | null {
+  const { references } = listCached(config);
+  return references.find(r => r.url === url) || null;
 }
 
 /**
@@ -82,21 +65,31 @@ export async function saveToTemp(
   title: string,
   url: string,
   content: string,
-  query?: string
+  query?: string,
+  refetch?: boolean
 ): Promise<SaveResult> {
   try {
     const tempDir = config.paths.tempDir;
 
+    // Check if URL was already fetched (unless refetch is true)
+    const existing = findByUrl(config, url);
+    if (existing && !refetch) {
+      return {
+        refId: existing.refId,
+        filepath: existing.filepath,
+        alreadyExists: true,
+      };
+    }
+
     mkdirSync(tempDir, { recursive: true });
 
-    const refId = getNextRefId(tempDir);
     const slug = slugify(title);
-    const filename = `${refId}-${slug}.md`;
-    const filepath = join(tempDir, filename);
+    const filename = `${slug}.md`;
+    // Use existing filepath if refetching, otherwise use new path
+    const filepath = existing && refetch ? existing.filepath : join(tempDir, filename);
 
     const today = new Date().toISOString().split('T')[0];
     let fileContent = `---\n`;
-    fileContent += `id: ${refId}\n`;
     fileContent += `title: "${title.replace(/"/g, '\\"')}"\n`;
     fileContent += `source_url: ${url}\n`;
     fileContent += `fetched_date: ${today}\n`;
@@ -110,7 +103,7 @@ export async function saveToTemp(
 
     await writeFile(filepath, fileContent, 'utf-8');
 
-    return { refId, filepath };
+    return { refId: slug, filepath };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { refId: '', filepath: '', error: message };
@@ -128,7 +121,7 @@ export function listCached(config: FetchiConfig): ListResult {
       return { references: [] };
     }
 
-    const files = readdirSync(tempDir).filter(f => f.endsWith('.md') && f.startsWith('REF-'));
+    const files = readdirSync(tempDir).filter(f => f.endsWith('.md'));
     const references: CachedReference[] = [];
 
     for (const file of files) {
@@ -140,24 +133,28 @@ export function listCached(config: FetchiConfig): ListResult {
 
       const frontmatter = frontmatterMatch[1];
 
-      const getId = (key: string): string => {
+      const getValue = (key: string): string => {
         const match = frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
         return match ? match[1].trim().replace(/^["']|["']$/g, '').trim() : '';
       };
 
+      // Use filename (without .md) as refId
+      const slug = file.replace(/\.md$/, '');
+
       const ref = {
-        refId: getId('id'),
-        title: getId('title'),
-        url: getId('source_url'),
+        refId: slug,
+        title: getValue('title'),
+        url: getValue('source_url'),
         filepath,
-        fetchedDate: getId('fetched_date'),
+        fetchedDate: getValue('fetched_date'),
         size: content.length,
-        query: getId('query') || undefined,
+        query: getValue('query') || undefined,
       };
       references.push(ref);
     }
 
-    references.sort((a, b) => b.refId.localeCompare(a.refId));
+    // Sort by fetched date (newest first)
+    references.sort((a, b) => b.fetchedDate.localeCompare(a.fetchedDate));
 
     return { references };
   } catch (error) {
@@ -257,4 +254,87 @@ export function deleteCached(config: FetchiConfig, refId: string): DeleteResult 
  */
 export function findCacheRoot(): string {
   return process.cwd();
+}
+
+// ============================================================================
+// LINK EXTRACTION
+// ============================================================================
+
+export interface ExtractedLink {
+  text: string;
+  href: string;
+}
+
+export interface LinkExtractionResult {
+  links: ExtractedLink[];
+  count: number;
+  sourceRef: string;
+  error?: string;
+}
+
+/**
+ * Extract all http/https links from markdown content
+ */
+function extractLinksFromMarkdown(content: string): ExtractedLink[] {
+  // Match markdown links: [text](url)
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: ExtractedLink[] = [];
+  const seen = new Set<string>();
+
+  let match;
+  while ((match = linkRegex.exec(content)) !== null) {
+    const text = match[1];
+    const href = match[2];
+
+    // Only include http/https links, skip anchors, relative paths, mailto, etc.
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      // Deduplicate by href
+      if (!seen.has(href)) {
+        seen.add(href);
+        links.push({ text, href });
+      }
+    }
+  }
+
+  return links;
+}
+
+/**
+ * Extract all links from a cached reference
+ */
+export function extractLinksFromCached(config: FetchiConfig, refId: string): LinkExtractionResult {
+  try {
+    const cached = findCached(config, refId);
+
+    if (!cached) {
+      return {
+        links: [],
+        count: 0,
+        sourceRef: refId,
+        error: `Reference ${refId} not found in ${config.paths.tempDir}`,
+      };
+    }
+
+    const content = readFileSync(cached.filepath, 'utf-8');
+
+    // Skip frontmatter, only extract from body
+    const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n*/);
+    const body = frontmatterMatch ? content.substring(frontmatterMatch[0].length) : content;
+
+    const links = extractLinksFromMarkdown(body);
+
+    return {
+      links,
+      count: links.length,
+      sourceRef: refId,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      links: [],
+      count: 0,
+      sourceRef: refId,
+      error: message,
+    };
+  }
 }
