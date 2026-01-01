@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/briansunter/arcfetch/compare/v1.1.0...v1.1.1) (2026-01-01)
+
+
+### Bug Fixes
+
+* correct MCP config format and update plugin version ([6cfa866](https://github.com/briansunter/arcfetch/commit/6cfa8663ccaf04e840b467bc25b89ca8704da6a0))
+
 # [1.1.0](https://github.com/briansunter/arcfetch/compare/v1.0.0...v1.1.0) (2025-12-31)
 
 
