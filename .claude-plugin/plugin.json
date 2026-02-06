@@ -1,7 +1,7 @@
 {
   "name": "arcfetch",
-  "description": "URL fetching and article extraction tool with MCP server",
-  "version": "1.1.0",
+  "description": "Fetch URLs, extract clean article content, and cache as markdown with automatic Playwright fallback, quality validation, and boilerplate detection",
+  "version": "1.2.0",
   "author": {
     "name": "Brian Sunter"
   }

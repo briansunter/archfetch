@@ -12,6 +12,7 @@ Perfect for AI workflows, research, and documentation. Fetches URLs, extracts ar
 | Problem | Solution |
 |---------|----------|
 | **JS-heavy sites return blank** | Auto-detects and retries with Playwright |
+| **Login walls / error pages scored as content** | Boilerplate detection (22 patterns) catches them |
 | **Too much HTML clutter** | Mozilla Readability extracts just the article |
 | **High token costs for LLMs** | 90-95% token reduction vs raw HTML |
 | **No good caching story** | Temp → Docs workflow for easy curation |
@@ -20,12 +21,14 @@ Perfect for AI workflows, research, and documentation. Fetches URLs, extracts ar
 ## Features
 
 - **Smart Fetching**: Simple HTTP first, automatic Playwright fallback for JS-heavy sites
-- **Quality Gates**: Configurable quality thresholds (0-100) with automatic retry
+- **Quality Gates**: Scoring (0-100) with boilerplate, login wall, paywall, and error page detection
+- **Content-to-Source Ratio**: Catches JS-rendered or gated content by comparing extracted text to source HTML size
+- **Anti-Bot Detection**: Stealth plugin, viewport/timezone/locale rotation, realistic headers, navigator overrides
 - **Clean Markdown**: Mozilla Readability + Turndown for 90-95% token reduction
 - **Temp → Docs Workflow**: Cache to temp folder, promote to docs when ready
-- **CLI & MCP**: Available as command-line tool and MCP server
+- **Link Extraction**: Extract and batch-fetch all links from a cached reference
+- **CLI & MCP**: Available as command-line tool and MCP server (6 tools)
 - **Multiple Output Formats**: Plain text, JSON, filepath, or summary
-- **Configurable Thresholds**: Set quality minimums and retry strategies
 
 ## Quick Start
 
@@ -54,7 +57,7 @@ arcfetch fetch https://example.com/article
 ### Development
 
 ```bash
-git clone https://github.com/yourusername/arcfetch.git
+git clone https://github.com/briansunter/arcfetch.git
 cd arcfetch
 bun install
 bun run cli.ts fetch https://example.com
@@ -62,23 +65,32 @@ bun run cli.ts fetch https://example.com
 
 ## CLI Usage
 
-### Basic Commands
+### Commands
 
 ```bash
-# Fetch and display markdown (default output)
+# Fetch a URL and save to temp folder
 arcfetch fetch https://example.com/article
 
 # List all cached references
 arcfetch list
 
+# Extract links from a cached reference
+arcfetch links my-article
+
+# Fetch all links from a cached reference (parallel)
+arcfetch fetch-links my-article
+
 # Promote from temp to permanent docs
-arcfetch promote REF-001
+arcfetch promote my-article
 
 # Delete a cached reference
-arcfetch delete REF-001
+arcfetch delete my-article
 
 # Show current configuration
 arcfetch config
+
+# Start MCP server
+arcfetch mcp
 ```
 
 ### Output Formats
@@ -90,7 +102,7 @@ arcfetch fetch https://example.com -o text
 # Just the filepath (for scripts)
 arcfetch fetch https://example.com -o path
 
-# Summary: REF-ID|filepath
+# Summary: slug|filepath
 arcfetch fetch https://example.com -o summary
 
 # Structured JSON
@@ -115,6 +127,9 @@ arcfetch fetch https://example.com --force-playwright
 # Use faster wait strategy for simple sites
 arcfetch fetch https://example.com --wait-strategy load
 
+# Re-fetch even if URL already cached
+arcfetch fetch https://example.com --refetch
+
 # Custom directories
 arcfetch fetch https://example.com --temp-dir .cache --docs-dir content
 
@@ -126,7 +141,7 @@ arcfetch fetch https://example.com -v
 
 ### Installation (Recommended: npx/bunx)
 
-Add to your Claude Code MCP configuration (`~/.config/claude-code/mcp_config.json`):
+Add to your Claude Code MCP configuration:
 
 ```json
 {
@@ -170,16 +185,12 @@ Or using bunx (faster):
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `fetch_url` | `url`, `query?`, `minQuality?`, `forcePlaywright?` | Fetch URL with auto JS fallback |
-| `list_cached` | - | List all cached references |
-| `promote_reference` | `refId` | Move from temp to docs folder |
+| `fetch_url` | `url`, `query?`, `minQuality?`, `refetch?`, `outputFormat?` | Fetch URL with auto JS fallback |
+| `list_cached` | `tempDir?` | List all cached references |
+| `promote_reference` | `refId`, `docsDir?` | Move from temp to docs folder |
 | `delete_cached` | `refId` | Delete a cached reference |
-
-Example MCP usage:
-```
-User: Fetch https://example.com/article for me
-Claude: [Calls fetch_url tool]
-```
+| `extract_links` | `refId`, `outputFormat?` | Extract links from a cached reference |
+| `fetch_links` | `refId`, `refetch?`, `outputFormat?` | Fetch all links from a cached reference |
 
 ## Configuration
 
@@ -204,34 +215,71 @@ Create `arcfetch.config.json` in your project root:
 }
 ```
 
+Config files checked (in order): `arcfetch.config.json`, `.arcfetchrc`, `.arcfetchrc.json`
+
 ### Environment Variables
 
 ```bash
-ARCFETCH_MIN_SCORE=60
-ARCFETCH_TEMP_DIR=.tmp/arcfetch
-ARCFETCH_DOCS_DIR=docs/ai/references
+SOFETCH_MIN_SCORE=60
+SOFETCH_JS_RETRY_THRESHOLD=85
+SOFETCH_TEMP_DIR=.tmp/arcfetch
+SOFETCH_DOCS_DIR=docs/ai/references
 ```
+
+### Priority Order
+
+CLI arguments > Environment variables > Config file > Built-in defaults
 
 ## Quality Pipeline
 
 ```
-URL → Simple Fetch → Quality Check
-                         │
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
-     Score ≥ 85      60-84           < 60
-         │               │               │
-         ▼               ▼               ▼
-       Save        Try Playwright   Try Playwright
-                   (if better)      (required)
-                         │               │
-                         ▼               ▼
-                   Compare &       Score ≥ 60?
-                   use best        Yes → Save
-                                   No → Error
+URL → Simple Fetch → Extract → Quality Score (0-100)
+                                     │
+                  ┌──────────────────┼──────────────────┐
+                  ▼                  ▼                   ▼
+              Score >= 85        60 - 84              < 60
+                  │                  │                   │
+                  ▼                  ▼                   ▼
+                Save          Try Playwright       Try Playwright
+                              pick best score      (required)
+                                                        │
+                                                        ▼
+                                                   Score >= 60?
+                                                   Yes → Save
+                                                   No → Error
 ```
 
-## Playwright Wait Strategies
+### Quality Scoring
+
+Score starts at 100, deductions apply:
+
+| Check | Deduction |
+|-------|-----------|
+| Blank content | Score = 0 |
+| Content < 50 chars | -50 |
+| Content < 300 chars | -15 |
+| HTML tags > 100 | -40 |
+| HTML tags > 50 | -20 |
+| HTML ratio > 30% | -25 |
+| Extraction ratio < 0.5% (large page) | -35 |
+| Extraction ratio < 2% (large page) | -20 |
+| Boilerplate detected | -40 |
+| Script/style tags | -10 to -15 |
+
+### Boilerplate Detection
+
+On short content (< 2000 chars), 22 patterns are checked:
+
+- **Error pages**: "something went wrong", "an error occurred"
+- **404 pages**: "page not found"
+- **Login walls**: "log in to continue", "please log in", "sign in to continue"
+- **Paywalls**: "subscribe to continue reading"
+- **Bot detection**: "are you a robot", "complete the captcha"
+- **Access denied**, **JS-required**, **unsupported browser**
+
+Long articles (>= 2000 chars) are not checked for boilerplate to avoid false positives.
+
+### Playwright Wait Strategies
 
 | Strategy | Speed | Reliability | Best For |
 |----------|-------|-------------|----------|
@@ -239,25 +287,29 @@ URL → Simple Fetch → Quality Check
 | `domcontentloaded` | Medium | Medium | Most SPAs, modern sites |
 | `load` | Fastest | Basic | Static sites, simple pages |
 
-## Quality Pipeline
+## File Format
 
-```
-URL → Simple Fetch → Quality Check (0-100)
-                         │
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
-     Score ≥ 85      60-84           < 60
-         │               │               │
-         ▼               ▼               ▼
-       Save        Try Playwright   Try Playwright
-                   use best         Score ≥ 60?
-                                    Yes → Save
-                                    No → Error
+Cached files use markdown with YAML frontmatter:
+
+```markdown
+---
+title: "Article Title"
+source_url: https://example.com/article
+fetched_date: 2026-02-06
+type: web
+status: temporary
+query: "optional search query"
+---
+
+# Article Title
+
+Extracted markdown content...
 ```
 
-**Default thresholds:**
-- `minScore`: 60 - Content below this is rejected
-- `jsRetryThreshold`: 85 - Above this, skip Playwright entirely
+- **Ref IDs** are slugified titles (e.g., `how-to-build-react-apps`)
+- **Temp storage**: `.tmp/arcfetch/<slug>.md` (status: temporary)
+- **Permanent storage**: `docs/ai/references/<slug>.md` (status: permanent, after promote)
+- **Duplicate detection**: re-fetching same URL returns existing ref unless `--refetch`
 
 ## Real-World Examples
 
@@ -265,97 +317,74 @@ URL → Simple Fetch → Quality Check (0-100)
 
 ```bash
 # Fetch multiple articles for research
-npx arcfetch fetch https://arxiv.org/abs/2301.00001 -q "LLM research"
-npx arcfetch fetch https://openai.com/research/gpt-4 -q "GPT-4"
+arcfetch fetch https://arxiv.org/abs/2301.00001 -q "LLM research"
+arcfetch fetch https://openai.com/research/gpt-4 -q "GPT-4"
 
-# List all fetched
-npx arcfetch list
+# Review all cached references
+arcfetch list --pretty
 
-# Promote the best ones to docs
-npx arcfetch promote REF-001
-npx arcfetch promote REF-002
+# Promote the good ones to docs
+arcfetch promote llm-research-paper
+arcfetch promote gpt-4-technical-report
+```
+
+### Link Crawling Workflow
+
+```bash
+# Fetch a page with lots of links
+arcfetch fetch https://example.com/resources --pretty
+
+# See what links it contains
+arcfetch links resources --pretty
+
+# Fetch all of them in parallel
+arcfetch fetch-links resources --pretty
 ```
 
 ### Script Integration
 
 ```bash
 #!/bin/bash
-# fetch-and-process.sh
-
 # Fetch and get filepath
-filepath=$(npx arcfetch fetch https://example.com -o path)
+filepath=$(arcfetch fetch https://example.com -o path)
 
 # Process with other tools
 cat "$filepath" | other-tool
 
-# Or get just the ref ID
-summary=$(npx arcfetch fetch https://example.com -o summary)
-ref_id=$(echo "$summary" | cut -d'|' -f1)
-
-# Promote if it meets quality standards
-if npx arcfetch promote "$ref_id"; then
-  echo "Successfully promoted $ref_id"
-fi
+# Or get JSON for structured processing
+arcfetch fetch https://example.com -o json | jq '.quality'
 ```
 
 ### Handling JS-Heavy Sites
 
 ```bash
 # Modern React/Vue/Angular apps
-arcfetch fetch https://spa-example.com --force-playwright --wait-strategy networkidle
+arcfetch fetch https://spa-example.com --force-playwright
 
 # Simple blogs (use faster strategy)
 arcfetch fetch https://blog.example.com --wait-strategy load
 
-# Unknown site (let arcfetch decide)
-arcfetch fetch https://unknown-site.com
-```
-
-### Bulk Fetching with JSON Output
-
-```bash
-# Fetch multiple URLs and parse JSON
-for url in "${urls[@]}"; do
-  arcfetch fetch "$url" -o json >> results.json
-done
-
-# Or use jq to extract specific fields
-arcfetch fetch https://example.com -o json | jq '.filepath'
+# Unknown site (let arcfetch decide automatically)
+arcfetch fetch https://unknown-site.com -v
 ```
 
 ## Troubleshooting
 
-### "Playwright not found" Error
-
-**Problem:** Playwright fails to launch
-
-**Solution:**
-```bash
-# If using npm globally
-npm install -g playwright
-
-# If using npx (auto-installed)
-npx arcfetch fetch https://example.com --force-playwright
-```
-
 ### Low Quality Score
 
-**Problem:** Content is rejected due to low quality
-
-**Solution:**
 ```bash
 # Lower the threshold temporarily
 arcfetch fetch https://example.com --min-quality 40
 
 # Or force Playwright (often produces better results)
 arcfetch fetch https://example.com --force-playwright
+
+# Check what's happening with verbose mode
+arcfetch fetch https://example.com -v
 ```
 
 ### Timeout on Slow Sites
 
-**Problem:** Site takes too long to load
-
-**Solution:**
 ```bash
 # Use faster wait strategy
 arcfetch fetch https://example.com --wait-strategy load
@@ -364,70 +393,40 @@ arcfetch fetch https://example.com --wait-strategy load
 arcfetch fetch https://example.com --force-playwright --wait-strategy domcontentloaded
 ```
 
-### MCP Server Not Connecting
-
-**Problem:** Claude Code can't connect to MCP server
-
-**Solution:**
-```bash
-# Test if the MCP server works manually
-npx arcfetch fetch https://example.com
-
-# Check your MCP config path
-# macOS: ~/.config/claude-code/mcp_config.json
-# Linux: ~/.config/claude-code/mcp_config.json
-# Windows: %APPDATA%\claude-code\mcp_config.json
-```
-
-## Comparison
-
-| Feature | arcfetch | html-to-markdown | url-to-markdown | playwright-extra |
-|---------|----------|------------------|-----------------|------------------|
-| Auto JS fallback | ✅ | ❌ | ❌ | Manual |
-| Quality scoring | ✅ | ❌ | ❌ | ❌ |
-| Temp → Docs workflow | ✅ | ❌ | ❌ | ❌ |
-| MCP server | ✅ | ❌ | ❌ | ❌ |
-| Multiple output formats | ✅ | ❌ | Some | ❌ |
-| Zero-config | ✅ | ✅ | ✅ | ❌ |
-| Playwright included | ✅ | ❌ | ❌ | Manual setup |
-
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     CLI / MCP Interface                  │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Core Pipeline                         │
-│  1. Simple HTTP Fetch                                    │
-│  2. Extract with Readability + Turndown                  │
-│  3. Validate Quality Score                               │
-│  4. Conditional Playwright Retry                         │
-│  5. Cache with Frontmatter Metadata                      │
-└─────────────────────────────────────────────────────────┘
-                            │
-            ┌───────────────┼───────────────┐
-            ▼               ▼               ▼
-      ┌───────────┐  ┌───────────┐  ┌───────────┐
-      │   Cache   │  │Playwright │  │ Validator │
-      │   Manager │  │  Manager  │  │           │
-      └───────────┘  └───────────┘  └───────────┘
+┌──────────────────────────────────────────────────────┐
+│                  CLI / MCP Interface                  │
+└──────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────┐
+│                   Core Pipeline                       │
+│  1. Simple HTTP Fetch (browser-like UA)               │
+│  2. Extract with Readability + Turndown               │
+│  3. Quality Score + Boilerplate Detection             │
+│  4. Conditional Playwright Retry (with stealth)       │
+│  5. Cache with YAML Frontmatter                       │
+└──────────────────────────────────────────────────────┘
+                           │
+           ┌───────────────┼───────────────┐
+           ▼               ▼               ▼
+     ┌───────────┐  ┌───────────┐  ┌───────────┐
+     │   Cache   │  │ Playwright│  │ Quality   │
+     │  Manager  │  │  Manager  │  │ Validator │
+     └───────────┘  └───────────┘  └───────────┘
 ```
 
 ## Contributing
 
-Contributions welcome! Please read our contributing guidelines and submit pull requests to the main branch.
-
-### Development Setup
-
 ```bash
-git clone https://github.com/yourusername/arcfetch.git
+git clone https://github.com/briansunter/arcfetch.git
 cd arcfetch
 bun install
-bun test          # Run tests
+bun test          # Run tests (199 tests)
 bun run typecheck # Type checking
+bun run check     # Lint + format check
 ```
 
 ## License

@@ -1,117 +1,151 @@
 ---
 name: arcfetch
-description: Use when working with @briansunter/arcfetch CLI for URL fetching, article extraction, and cache management. Triggers: fetching URLs, batch processing, managing cached references, promoting/deleting content, or integrating arcfetch into automation pipelines.
+description: Use when working with arcfetch CLI for URL fetching, article extraction, and cache management. Triggers on fetching URLs, batch processing, managing cached references, promoting/deleting content, extracting/fetching links, or integrating arcfetch into automation pipelines.
 ---
 
 # arcfetch
 
-Guide for using the arcfetch CLI tool to fetch web content, extract articles, and manage cached references.
+Guide for using the arcfetch CLI to fetch web content, extract articles as clean markdown, and manage cached references.
 
 ## Overview
 
-arcfetch converts web pages to clean markdown with automatic JavaScript rendering fallback via Playwright when needed.
+arcfetch converts web pages to clean markdown with:
+- Automatic Playwright fallback when simple HTTP fetch produces low-quality results
+- Quality scoring (0-100) with boilerplate/error page/login wall/paywall detection
+- Content-to-source ratio analysis to catch JS-rendered or gated content
+- Anti-bot detection measures (stealth plugin, viewport/timezone rotation, realistic headers)
 
 ## Installation
 
 ```bash
-# Install globally
-bun install -g @briansunter/arcfetch
+# Use via bunx (no install needed)
+bunx arcfetch <command>
 
-# Or use via bunx
-bunx @briansunter/arcfetch <command>
+# Or install globally
+bun install -g arcfetch
 ```
 
 ## Commands
 
 ### fetch
 
-Fetch URL and save to temp folder.
+Fetch a URL and save extracted markdown to the temp folder.
 
 ```bash
-bunx @briansunter/arcfetch fetch <url> [options]
+arcfetch fetch <url> [options]
 ```
 
 **Options:**
 - `-q, --query <text>` - Search query (saved as metadata)
-- `-o, --output <format>` - Output format (default: text)
-  - `text` - Plain text (LLM-friendly)
+- `-o, --output <format>` - Output format:
+  - `text` - Plain text, LLM-friendly (default)
   - `json` - Structured JSON
   - `path` - Just the filepath
-  - `summary` - REF-ID|filepath format
+  - `summary` - slug|filepath format
 - `--pretty` - Human-friendly output with emojis
-- `-v, --verbose` - Show detailed output
+- `-v, --verbose` - Show detailed output (quality scores, pipeline decisions)
 - `--min-quality <n>` - Minimum quality score 0-100 (default: 60)
 - `--temp-dir <path>` - Temp folder (default: .tmp/arcfetch)
 - `--docs-dir <path>` - Docs folder (default: docs/ai/references)
-- `--playwright <mode>` - Playwright mode: auto, local, docker
+- `--wait-strategy <mode>` - Playwright wait: networkidle (default), domcontentloaded, load
+- `--force-playwright` - Skip simple fetch, use Playwright directly
+- `--refetch` - Re-fetch even if URL already cached
 
 **Examples:**
 
 ```bash
 # Basic fetch (plain text output for LLMs)
-bunx @briansunter/arcfetch fetch https://example.com/article
+arcfetch fetch https://example.com/article
 
 # Get just the filepath
-bunx @briansunter/arcfetch fetch https://example.com -o path
+arcfetch fetch https://example.com -o path
 
-# Human-friendly output with emojis
-bunx @briansunter/arcfetch fetch https://example.com --pretty
+# Human-friendly output
+arcfetch fetch https://example.com --pretty
 
 # JSON output for scripting
-bunx @briansunter/arcfetch fetch https://example.com -o json
+arcfetch fetch https://example.com -o json
 
 # With search query metadata
-bunx @briansunter/arcfetch fetch https://example.com -q "search term"
+arcfetch fetch https://example.com -q "search term"
 
-# Verbose mode to see what's happening
-bunx @briansunter/arcfetch fetch https://example.com -v
+# Verbose mode to see pipeline decisions
+arcfetch fetch https://example.com -v
+
+# Force Playwright for JS-heavy sites
+arcfetch fetch https://example.com --force-playwright
 ```
 
-**Process:** HTTP fetch → Extract content → Quality score (0-100) → Playwright retry if score < 85
+**Quality Pipeline:**
+1. Simple HTTP fetch with browser-like User-Agent
+2. Extract content with Readability + Turndown
+3. Quality score (0-100) with boilerplate detection
+4. Score >= 85: accept as-is
+5. Score 60-84: try Playwright, use whichever scores higher
+6. Score < 60: require Playwright, fail if still below threshold
 
 ### list
 
 List all cached references.
 
 ```bash
-bunx @briansunter/arcfetch list [options]
+arcfetch list [options]
 ```
 
 **Options:**
 - `-o, --output <format>` - Output format: text, json
-- `--pretty` - Human-friendly output with emojis
-
-**Examples:**
+- `--pretty` - Human-friendly output
 
 ```bash
-# List references (plain text)
-bunx @briansunter/arcfetch list
+arcfetch list --pretty
+arcfetch list -o json
+```
 
-# Pretty output with emojis
-bunx @briansunter/arcfetch list --pretty
+### links
 
-# JSON output
-bunx @briansunter/arcfetch list -o json
+Extract all links from a cached reference.
+
+```bash
+arcfetch links <ref-id> [options]
+```
+
+**Options:**
+- `-o, --output <format>` - Output format: text, json
+- `--pretty` - Human-friendly output
+
+```bash
+arcfetch links my-article --pretty
+arcfetch links my-article -o json
+```
+
+### fetch-links
+
+Fetch all links from a cached reference (parallel, max 5 concurrent).
+
+```bash
+arcfetch fetch-links <ref-id> [options]
+```
+
+**Options:**
+- `--refetch` - Force re-fetch even if already cached
+- `-o, --output <format>` - Output format: text, json
+- `--pretty` - Human-friendly output
+
+```bash
+arcfetch fetch-links my-article --pretty
 ```
 
 ### promote
 
-Move reference from temp to docs folder.
+Move reference from temp to permanent docs folder.
 
 ```bash
-bunx @briansunter/arcfetch promote <ref-id> [options]
+arcfetch promote <ref-id> [options]
 ```
 
-**Options:**
-- `-o, --output <format>` - Output format: text, json
-- `--pretty` - Human-friendly output with emojis
-
-**Examples:**
-
 ```bash
-bunx @briansunter/arcfetch promote REF-001
-bunx @briansunter/arcfetch promote REF-001 --pretty
-bunx @briansunter/arcfetch promote REF-001 -o json
+arcfetch promote my-article --pretty
+arcfetch promote my-article -o json
 ```
 
 ### delete
@@ -119,18 +153,11 @@ bunx @briansunter/arcfetch promote REF-001 -o json
 Delete a cached reference.
 
 ```bash
-bunx @briansunter/arcfetch delete <ref-id> [options]
+arcfetch delete <ref-id> [options]
 ```
 
-**Options:**
-- `-o, --output <format>` - Output format: text, json
-- `--pretty` - Human-friendly output with emojis
-
-**Examples:**
-
 ```bash
-bunx @briansunter/arcfetch delete REF-001
-bunx @briansunter/arcfetch delete REF-001 --pretty
+arcfetch delete my-article --pretty
 ```
 
 ### config
@@ -138,65 +165,75 @@ bunx @briansunter/arcfetch delete REF-001 --pretty
 Show current configuration.
 
 ```bash
-bunx @briansunter/arcfetch config
+arcfetch config
 ```
 
-Displays all config settings including quality thresholds, paths, and Playwright mode.
+### mcp
+
+Start the MCP server (for Claude Code integration).
+
+```bash
+arcfetch mcp
+```
 
 ## Workflow Patterns
 
 ### Single Article
 
 ```bash
-bunx @briansunter/arcfetch fetch https://example.com/guide
-cat .tmp/arcfetch/REF-001-guide.md  # Review
-bunx @briansunter/arcfetch promote REF-001  # If good
+arcfetch fetch https://example.com/guide --pretty
+cat .tmp/arcfetch/example-guide.md  # Review content
+arcfetch promote example-guide      # Move to docs if good
 ```
 
 ### Batch Fetch
 
 ```bash
 for url in "url1" "url2" "url3"; do
-  bunx @briansunter/arcfetch fetch "$url"
+  arcfetch fetch "$url" --pretty
 done
-
-bunx @briansunter/arcfetch list  # Review all
-bunx @briansunter/arcfetch promote REF-001  # Promote desired
+arcfetch list --pretty         # Review all
+arcfetch promote my-article    # Promote desired ones
 ```
 
-### Cleanup Temp References
+### Fetch All Links from a Page
 
 ```bash
-bunx @briansunter/arcfetch list
-bunx @briansunter/arcfetch delete REF-001  # Delete unwanted
+arcfetch fetch https://example.com/resources --pretty
+arcfetch links resources --pretty           # See what links exist
+arcfetch fetch-links resources --pretty     # Fetch them all
 ```
 
 ### Scripting with JSON Output
 
 ```bash
-# Fetch and parse result
-RESULT=$(bunx @briansunter/arcfetch fetch https://example.com -o json)
+RESULT=$(arcfetch fetch https://example.com -o json)
 REF_ID=$(echo "$RESULT" | jq -r '.refId')
-FILEPATH=$(echo "$RESULT" | jq -r '.filepath')
 QUALITY=$(echo "$RESULT" | jq -r '.quality')
 
-# Conditional promote based on quality
 if (( QUALITY >= 85 )); then
-  bunx @briansunter/arcfetch promote "$REF_ID"
+  arcfetch promote "$REF_ID"
 fi
+```
+
+### Cleanup
+
+```bash
+arcfetch list --pretty
+arcfetch delete unwanted-ref
 ```
 
 ## Configuration
 
-### Config File Priority
+### Priority Order
 
 1. CLI arguments
 2. Environment variables
 3. `arcfetch.config.json`
-4. `.arcfetchrc`
-5. `.arcfetchrc.json`
+4. `.arcfetchrc` / `.arcfetchrc.json`
+5. Built-in defaults
 
-### Create `arcfetch.config.json`
+### Config File (`arcfetch.config.json`)
 
 ```json
 {
@@ -204,12 +241,13 @@ fi
     "minScore": 60,
     "jsRetryThreshold": 85
   },
-  "playwright": {
-    "mode": "auto"
-  },
   "paths": {
     "tempDir": ".tmp/arcfetch",
     "docsDir": "docs/ai/references"
+  },
+  "playwright": {
+    "timeout": 30000,
+    "waitStrategy": "networkidle"
   }
 }
 ```
@@ -220,54 +258,87 @@ fi
 export SOFETCH_MIN_SCORE=60
 export SOFETCH_TEMP_DIR=".tmp/arcfetch"
 export SOFETCH_DOCS_DIR="docs/ai/references"
-export SOFETCH_PLAYWRIGHT_MODE="auto"
-```
-
-### Quality Thresholds
-
-- **minScore** (default: 60) - Below this, content rejected
-- **jsRetryThreshold** (default: 85) - Above this, skip Playwright
-
-### Playwright Modes
-
-- `auto` - Docker if available, fallback to local (default)
-- `docker` - Docker only
-- `local` - Local Playwright only
-
-## MCP Server
-
-```bash
-bunx @briansunter/arcfetch
-# Tools: fetch_url, list_cached, promote_reference, delete_cached
-```
-
-## File Format
-
-Fetched files include YAML frontmatter:
-
-```markdown
----
-ref_id: REF-001
-url: https://example.com/article
-status: temporary
-fetched_at: 2025-12-25T10:00:00Z
-quality_score: 87
-playwright_used: false
-query: search term
----
-
-# Article Title
-
-Content...
 ```
 
 ## Quality Scoring
 
-- **≥ 85** - Excellent, ready to promote
-- **60-84** - Good, review manually
-- **< 60** - Poor, consider deleting
+Score starts at 100 and deductions apply:
+
+| Check | Deduction | Severity |
+|-------|-----------|----------|
+| Blank content | Score = 0 | Issue |
+| Content < 50 chars | -50 | Issue |
+| Content < 300 chars | -15 | Warning |
+| HTML tags > 100 | -40 | Issue |
+| HTML tags > 50 | -20 | Warning |
+| HTML tags > 10 | -5 | Warning |
+| HTML ratio > 30% | -25 | Issue |
+| HTML ratio > 15% | -10 | Warning |
+| Table tags > 50 | -30 | Issue |
+| Script tags present | -15 | Warning |
+| Style tags present | -10 | Warning |
+| Extraction ratio < 0.5% (from large page) | -35 | Issue |
+| Extraction ratio < 2% (from large page) | -20 | Warning |
+| Boilerplate detected (error/login/paywall) | -40 | Issue |
+| Excessive newlines | -5 | Warning |
+
+**Boilerplate patterns detected** (on short content < 2000 chars):
+- Error pages: "something went wrong", "an error occurred", "unexpected error"
+- 404 pages: "page not found", "404 not found"
+- Login walls: "log in to continue", "please log in", "sign in to continue"
+- Paywalls: "subscribe to continue reading"
+- Bot detection: "are you a robot", "complete the captcha", "verify you are human"
+- Access denied, JS-required, unsupported browser pages
+
+**Score thresholds:**
+- **>= 90**: Excellent
+- **>= 75**: Good
+- **>= 60**: Acceptable (minimum to pass)
+- **< 60**: Poor (rejected)
+
+## MCP Server
+
+The MCP server exposes 6 tools for Claude Code integration:
+
+| Tool | Description |
+|------|-------------|
+| `fetch_url` | Fetch URL, extract markdown, save to temp |
+| `list_cached` | List all cached references |
+| `promote_reference` | Move temp reference to docs folder |
+| `delete_cached` | Delete a cached reference |
+| `extract_links` | Extract links from a cached reference |
+| `fetch_links` | Fetch all links from a cached reference |
+
+Start via CLI: `arcfetch mcp`
+
+Or configure in Claude Code MCP settings to run `bunx arcfetch` as stdio server.
+
+## File Format
+
+Cached files use markdown with YAML frontmatter:
+
+```markdown
+---
+title: "Article Title"
+source_url: https://example.com/article
+fetched_date: 2026-02-06
+type: web
+status: temporary
+query: "optional search query"
+---
+
+# Article Title
+
+Extracted markdown content...
+```
+
+- **Ref IDs** are slugified titles (e.g., `how-to-build-react-apps`)
+- **Temp storage**: `.tmp/arcfetch/<slug>.md` (status: temporary)
+- **Permanent storage**: `docs/ai/references/<slug>.md` (status: permanent, after promote)
+- **Duplicate detection**: re-fetching same URL returns existing ref unless `--refetch`
 
 ## References
 
-- Project: https://github.com/briansunter/arcfetch
-- MCP: https://modelcontextprotocol.io
+- Package: https://www.npmjs.com/package/arcfetch
+- Repository: https://github.com/briansunter/arcfetch
+- MCP Protocol: https://modelcontextprotocol.io
