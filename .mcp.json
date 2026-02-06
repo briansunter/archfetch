@@ -1,6 +1,8 @@
 {
-  "arcfetch": {
-    "command": "bunx",
-    "args": ["arcfetch", "mcp"]
+  "mcpServers": {
+    "arcfetch": {
+      "command": "bunx",
+      "args": ["arcfetch", "mcp"]
+    }
   }
 }
