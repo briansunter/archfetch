@@ -1,9 +1,9 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
-import { existsSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { extractLinksFromCached } from '../../src/core/cache';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
 import type { FetchiConfig } from '../../src/config/schema';
+import { extractLinksFromCached } from '../../src/core/cache';
 
 const TEST_TEMP_DIR = '.test-links-temp';
 const TEST_DOCS_DIR = '.test-links-docs';
@@ -37,7 +37,9 @@ describe('Links extraction integration tests', () => {
   test('extracts multiple links from cached markdown', () => {
     const config = getTestConfig();
 
-    createTestFile('article-with-links.md', `---
+    createTestFile(
+      'article-with-links.md',
+      `---
 title: "Article with Links"
 source_url: https://example.com/article
 fetched_date: 2025-12-28
@@ -49,7 +51,8 @@ status: temporary
 
 Check out [Google](https://google.com) and [GitHub](https://github.com).
 Also visit [MDN](https://developer.mozilla.org) for docs.
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'article-with-links');
 
@@ -63,7 +66,9 @@ Also visit [MDN](https://developer.mozilla.org) for docs.
   test('ignores non-http links', () => {
     const config = getTestConfig();
 
-    createTestFile('mixed-links.md', `---
+    createTestFile(
+      'mixed-links.md',
+      `---
 title: "Mixed Links"
 source_url: https://example.com/mixed
 fetched_date: 2025-12-28
@@ -78,7 +83,8 @@ status: temporary
 - [Local](./file.md)
 - [FTP](ftp://server.com)
 - [Valid](https://valid.com)
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'mixed-links');
 
@@ -89,7 +95,9 @@ status: temporary
   test('deduplicates links by URL', () => {
     const config = getTestConfig();
 
-    createTestFile('dupe-links.md', `---
+    createTestFile(
+      'dupe-links.md',
+      `---
 title: "Duplicate Links"
 source_url: https://example.com/dupes
 fetched_date: 2025-12-28
@@ -102,7 +110,8 @@ status: temporary
 [First](https://example.com/page)
 [Second](https://example.com/page)
 [Third](https://example.com/page)
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'dupe-links');
 
@@ -113,7 +122,9 @@ status: temporary
   test('returns empty array for content without links', () => {
     const config = getTestConfig();
 
-    createTestFile('no-links.md', `---
+    createTestFile(
+      'no-links.md',
+      `---
 title: "No Links"
 source_url: https://example.com/nolinks
 fetched_date: 2025-12-28
@@ -124,7 +135,8 @@ status: temporary
 # No Links
 
 Just plain text without any links at all.
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'no-links');
 
@@ -146,7 +158,9 @@ Just plain text without any links at all.
   test('handles markdown with complex link formats', () => {
     const config = getTestConfig();
 
-    createTestFile('complex-links.md', `---
+    createTestFile(
+      'complex-links.md',
+      `---
 title: "Complex Links"
 source_url: https://example.com/complex
 fetched_date: 2025-12-28
@@ -161,12 +175,13 @@ status: temporary
 [Link_with_underscores](https://example.com/c)
 [Link (with parens)](https://example.com/d)
 [123 Numbers](https://example.com/e)
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'complex-links');
 
     expect(result.count).toBe(5);
-    expect(result.links.map(l => l.href)).toEqual([
+    expect(result.links.map((l) => l.href)).toEqual([
       'https://example.com/a',
       'https://example.com/b',
       'https://example.com/c',
@@ -178,7 +193,9 @@ status: temporary
   test('extracts links from http URLs as well as https', () => {
     const config = getTestConfig();
 
-    createTestFile('http-links.md', `---
+    createTestFile(
+      'http-links.md',
+      `---
 title: "HTTP Links"
 source_url: https://example.com/http
 fetched_date: 2025-12-28
@@ -190,7 +207,8 @@ status: temporary
 
 [HTTPS Link](https://secure.example.com)
 [HTTP Link](http://insecure.example.com)
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'http-links');
 
@@ -202,7 +220,9 @@ status: temporary
   test('preserves link text exactly as written', () => {
     const config = getTestConfig();
 
-    createTestFile('text-preservation.md', `---
+    createTestFile(
+      'text-preservation.md',
+      `---
 title: "Text Preservation"
 source_url: https://example.com/text
 fetched_date: 2025-12-28
@@ -215,7 +235,8 @@ status: temporary
 [UPPERCASE TEXT](https://example.com/a)
 [lowercase text](https://example.com/b)
 [MiXeD CaSe](https://example.com/c)
-`);
+`
+    );
 
     const result = extractLinksFromCached(config, 'text-preservation');
 

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { basename, join } from 'node:path';
 import type { FetchiConfig } from '../config/schema';
 
 export interface CachedReference {
@@ -43,7 +43,7 @@ export interface DeleteResult {
  */
 export function findByUrl(config: FetchiConfig, url: string): CachedReference | null {
   const { references } = listCached(config);
-  return references.find(r => r.url === url) || null;
+  return references.find((r) => r.url === url) || null;
 }
 
 /**
@@ -89,9 +89,10 @@ export async function saveToTemp(
     const filepath = existing && refetch ? existing.filepath : join(tempDir, filename);
 
     const today = new Date().toISOString().split('T')[0];
+    const sanitizedUrl = url.replace(/[\r\n]/g, '');
     let fileContent = `---\n`;
     fileContent += `title: "${title.replace(/"/g, '\\"')}"\n`;
-    fileContent += `source_url: ${url}\n`;
+    fileContent += `source_url: ${sanitizedUrl}\n`;
     fileContent += `fetched_date: ${today}\n`;
     fileContent += `type: web\n`;
     fileContent += `status: temporary\n`;
@@ -121,7 +122,7 @@ export function listCached(config: FetchiConfig): ListResult {
       return { references: [] };
     }
 
-    const files = readdirSync(tempDir).filter(f => f.endsWith('.md'));
+    const files = readdirSync(tempDir).filter((f) => f.endsWith('.md'));
     const references: CachedReference[] = [];
 
     for (const file of files) {
@@ -135,7 +136,12 @@ export function listCached(config: FetchiConfig): ListResult {
 
       const getValue = (key: string): string => {
         const match = frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
-        return match ? match[1].trim().replace(/^["']|["']$/g, '').trim() : '';
+        return match
+          ? match[1]
+              .trim()
+              .replace(/^["']|["']$/g, '')
+              .trim()
+          : '';
       };
 
       // Use filename (without .md) as refId
@@ -168,7 +174,7 @@ export function listCached(config: FetchiConfig): ListResult {
  */
 export function findCached(config: FetchiConfig, refId: string): CachedReference | null {
   const { references } = listCached(config);
-  return references.find(r => r.refId === refId) || null;
+  return references.find((r) => r.refId === refId) || null;
 }
 
 /**
@@ -247,13 +253,6 @@ export function deleteCached(config: FetchiConfig, refId: string): DeleteResult 
       error: message,
     };
   }
-}
-
-/**
- * Get cache root (for backwards compatibility)
- */
-export function findCacheRoot(): string {
-  return process.cwd();
 }
 
 // ============================================================================

@@ -5,7 +5,6 @@ import { DEFAULT_CONFIG } from '../../src/config/defaults';
 // Since the module has side effects (imports), we test the logic patterns
 
 describe('pipeline logic', () => {
-
   describe('quality routing thresholds', () => {
     test('score >= jsRetryThreshold (85) should use simple result', () => {
       const score = 90;

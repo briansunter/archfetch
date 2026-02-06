@@ -41,7 +41,7 @@ bunx @briansunter/arcfetch fetch <url> [options]
 - `--pretty` - Human-friendly output with emojis
 - `-v, --verbose` - Show detailed output
 - `--min-quality <n>` - Minimum quality score 0-100 (default: 60)
-- `--temp-dir <path>` - Temp folder (default: .tmp)
+- `--temp-dir <path>` - Temp folder (default: .tmp/arcfetch)
 - `--docs-dir <path>` - Docs folder (default: docs/ai/references)
 - `--playwright <mode>` - Playwright mode: auto, local, docker
 
@@ -149,7 +149,7 @@ Displays all config settings including quality thresholds, paths, and Playwright
 
 ```bash
 bunx @briansunter/arcfetch fetch https://example.com/guide
-cat .tmp/REF-001-guide.md  # Review
+cat .tmp/arcfetch/REF-001-guide.md  # Review
 bunx @briansunter/arcfetch promote REF-001  # If good
 ```
 
@@ -208,7 +208,7 @@ fi
     "mode": "auto"
   },
   "paths": {
-    "tempDir": ".tmp",
+    "tempDir": ".tmp/arcfetch",
     "docsDir": "docs/ai/references"
   }
 }
@@ -218,7 +218,7 @@ fi
 
 ```bash
 export SOFETCH_MIN_SCORE=60
-export SOFETCH_TEMP_DIR=".tmp"
+export SOFETCH_TEMP_DIR=".tmp/arcfetch"
 export SOFETCH_DOCS_DIR="docs/ai/references"
 export SOFETCH_PLAYWRIGHT_MODE="auto"
 ```

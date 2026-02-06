@@ -77,7 +77,7 @@ Schema defined with Zod in `schema.ts`. Key settings:
 - `quality.jsRetryThreshold` (default: 85) - Above this, skip Playwright
 - `playwright.timeout` (default: 30000) - Playwright navigation timeout
 - `playwright.waitStrategy` (default: `networkidle`) - Options: `networkidle`, `domcontentloaded`, `load`
-- `paths.tempDir` (default: `.tmp`) - Temp cache directory
+- `paths.tempDir` (default: `.tmp/arcfetch`) - Temp cache directory
 - `paths.docsDir` (default: `docs/ai/references`) - Permanent docs directory
 
 Environment variables:
@@ -94,7 +94,7 @@ Environment variables:
 ### File Storage Pattern
 Fetched content is saved as markdown files with YAML frontmatter:
 - Ref IDs are slugified titles (e.g., `how-to-build-react-apps`), not numbered
-- Temp storage: `.tmp/<slug>.md` (status: temporary)
+- Temp storage: `.tmp/arcfetch/<slug>.md` (status: temporary)
 - Permanent: `docs/ai/references/<slug>.md` (status: permanent, after promote)
 - Frontmatter fields: `title`, `source_url`, `fetched_date`, `type`, `status`, `query`
 - Duplicate detection by URL: re-fetching same URL returns existing ref unless `--refetch` flag

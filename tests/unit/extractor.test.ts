@@ -1,8 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { processHtmlToMarkdown } from "../../src/core/extractor.js";
+import { describe, expect, test } from 'bun:test';
+import { processHtmlToMarkdown } from '../../src/core/extractor.js';
 
-describe("processHtmlToMarkdown", () => {
-  test("extracts article from simple HTML", async () => {
+describe('processHtmlToMarkdown', () => {
+  test('extracts article from simple HTML', async () => {
     const html = `
       <!DOCTYPE html>
       <html>
@@ -18,15 +18,15 @@ describe("processHtmlToMarkdown", () => {
       </html>
     `;
 
-    const result = await processHtmlToMarkdown(html, "https://example.com", false);
-    
+    const result = await processHtmlToMarkdown(html, 'https://example.com', false);
+
     expect(result.error).toBeUndefined();
-    expect(result.title).toBe("Test Article");
-    expect(result.markdown).toContain("# Test Article");
-    expect(result.markdown).toContain("article content");
+    expect(result.title).toBe('Test Article');
+    expect(result.markdown).toContain('# Test Article');
+    expect(result.markdown).toContain('article content');
   });
 
-  test("returns error for non-article HTML", async () => {
+  test('returns error for non-article HTML', async () => {
     const html = `
       <!DOCTYPE html>
       <html>
@@ -41,13 +41,13 @@ describe("processHtmlToMarkdown", () => {
       </html>
     `;
 
-    const result = await processHtmlToMarkdown(html, "https://example.com", false);
-    
+    const result = await processHtmlToMarkdown(html, 'https://example.com', false);
+
     expect(result.error).toBeDefined();
-    expect(result.error).toContain("Could not extract");
+    expect(result.error).toContain('Could not extract');
   });
 
-  test("includes URL in markdown header", async () => {
+  test('includes URL in markdown header', async () => {
     const html = `
       <!DOCTYPE html>
       <html>
@@ -62,8 +62,8 @@ describe("processHtmlToMarkdown", () => {
       </html>
     `;
 
-    const result = await processHtmlToMarkdown(html, "https://example.com/article", false);
-    
-    expect(result.markdown).toContain("https://example.com/article");
+    const result = await processHtmlToMarkdown(html, 'https://example.com/article', false);
+
+    expect(result.markdown).toContain('https://example.com/article');
   });
 });

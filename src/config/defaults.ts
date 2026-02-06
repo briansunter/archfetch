@@ -6,15 +6,11 @@ export const DEFAULT_CONFIG: FetchiConfig = {
     jsRetryThreshold: 85,
   },
   paths: {
-    tempDir: '.tmp',
+    tempDir: '.tmp/arcfetch',
     docsDir: 'docs/ai/references',
   },
   playwright: {
     timeout: 30000,
     waitStrategy: 'networkidle',
-  },
-  retry: {
-    maxAttempts: 2,
-    backoffMs: 1000,
   },
 };

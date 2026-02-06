@@ -1,10 +1,10 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
-import { existsSync, rmSync, readFileSync } from 'node:fs';
-import { processHtmlToMarkdown } from '../../src/core/extractor';
-import { saveToTemp, listCached, findCached, promoteReference, deleteCached } from '../../src/core/cache';
-import { validateMarkdown } from '../../src/utils/markdown-validator';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
 import type { FetchiConfig } from '../../src/config/schema';
+import { deleteCached, findCached, listCached, promoteReference, saveToTemp } from '../../src/core/cache';
+import { processHtmlToMarkdown } from '../../src/core/extractor';
+import { validateMarkdown } from '../../src/utils/markdown-validator';
 
 const TEST_TEMP_DIR = '.test-e2e-temp';
 const TEST_DOCS_DIR = '.test-e2e-docs';
@@ -140,7 +140,12 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
     `;
 
     const extractResult = await processHtmlToMarkdown(html, 'https://example.com/delete-test');
-    const saveResult = await saveToTemp(config, extractResult.title!, 'https://example.com/delete-test', extractResult.markdown!);
+    const saveResult = await saveToTemp(
+      config,
+      extractResult.title!,
+      'https://example.com/delete-test',
+      extractResult.markdown!
+    );
 
     expect(existsSync(saveResult.filepath)).toBe(true);
 

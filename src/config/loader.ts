@@ -1,17 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FetchiConfigSchema, type FetchiConfig } from './schema';
 import { DEFAULT_CONFIG } from './defaults';
+import { type FetchiConfig, FetchiConfigSchema } from './schema';
 
 type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
 
-const CONFIG_FILES = [
-  'arcfetch.config.json',
-  '.arcfetchrc',
-  '.arcfetchrc.json',
-];
+const CONFIG_FILES = ['arcfetch.config.json', '.arcfetchrc', '.arcfetchrc.json'];
 
 export function findConfigFile(cwd: string = process.cwd()): string | null {
   for (const file of CONFIG_FILES) {
@@ -69,16 +65,16 @@ export interface CliConfigOverrides {
 export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig {
   // Deep copy to avoid mutating DEFAULT_CONFIG
   let config: FetchiConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-  
+
   const configFile = findConfigFile();
   if (configFile) {
     const fileConfig = loadConfigFromFile(configFile);
     config = deepMerge(config, fileConfig);
   }
-  
+
   const envConfig = loadConfigFromEnv();
   config = deepMerge(config, envConfig);
-  
+
   if (cliOverrides.minQuality !== undefined) {
     config.quality.minScore = cliOverrides.minQuality;
   }

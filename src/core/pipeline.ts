@@ -1,7 +1,7 @@
 import type { FetchiConfig } from '../config/schema';
-import { validateMarkdown, type ValidationResult } from '../utils/markdown-validator';
-import { fetchWithBrowser, closeBrowser } from './playwright/manager';
+import { type ValidationResult, validateMarkdown } from '../utils/markdown-validator';
 import { processHtmlToMarkdown } from './extractor';
+import { closeBrowser, fetchWithBrowser } from './playwright/manager';
 
 export interface FetchResult {
   success: boolean;
@@ -31,8 +31,9 @@ async function simpleFetch(url: string, verbose = false): Promise<SimpleFetchRes
     const response = await fetch(url, {
       redirect: 'follow',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
       },
     });
@@ -54,12 +55,7 @@ async function simpleFetch(url: string, verbose = false): Promise<SimpleFetchRes
   }
 }
 
-async function tryPlaywright(
-  url: string,
-  config: FetchiConfig,
-  reason: string,
-  verbose = false
-): Promise<FetchResult> {
+async function tryPlaywright(url: string, config: FetchiConfig, reason: string, verbose = false): Promise<FetchResult> {
   if (verbose) {
     console.error(`🎭 Trying Playwright (reason: ${reason})`);
   }
@@ -82,7 +78,7 @@ async function tryPlaywright(
     };
   }
 
-  const quality = validateMarkdown(extracted.markdown!);
+  const quality = validateMarkdown(extracted.markdown!, { sourceHtmlLength: browserResult.html.length });
 
   if (quality.score < config.quality.minScore) {
     return {
@@ -114,9 +110,24 @@ export async function fetchUrl(
   verbose = false,
   forcePlaywright = false
 ): Promise<FetchResult> {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return {
+        success: false,
+        error: `Invalid URL protocol: ${parsed.protocol} — only http and https are supported`,
+      };
+    }
+  } catch {
+    return {
+      success: false,
+      error: `Invalid URL: ${url}`,
+    };
+  }
+
   if (forcePlaywright) {
     if (verbose) {
-      console.error(`⚡ Force Playwright mode enabled`);
+      console.error('⚡ Force Playwright mode enabled');
     }
     return tryPlaywright(url, config, 'forced', verbose);
   }
@@ -139,10 +150,15 @@ export async function fetchUrl(
     return tryPlaywright(url, config, 'extraction_failed', verbose);
   }
 
-  const quality = validateMarkdown(extracted.markdown!);
+  const quality = validateMarkdown(extracted.markdown!, { sourceHtmlLength: simpleResult.html.length });
 
   if (verbose) {
     console.error(`📊 Quality score: ${quality.score}/100`);
+    if (quality.issues.length > 0) {
+      for (const issue of quality.issues) {
+        console.error(`   ⚠ ${issue}`);
+      }
+    }
   }
 
   if (quality.score >= config.quality.jsRetryThreshold) {

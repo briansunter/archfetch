@@ -1,8 +1,8 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { findConfigFile, loadConfigFromFile, loadConfigFromEnv, loadConfig } from '../../src/config/loader';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
+import { findConfigFile, loadConfig, loadConfigFromEnv, loadConfigFromFile } from '../../src/config/loader';
 
 const TEST_DIR = '.test-loader-temp';
 
@@ -231,8 +231,8 @@ describe('config loader', () => {
       expect(DEFAULT_CONFIG.playwright.timeout).toBe(30000);
     });
 
-    test('default tempDir is .tmp', () => {
-      expect(DEFAULT_CONFIG.paths.tempDir).toBe('.tmp');
+    test('default tempDir is .tmp/arcfetch', () => {
+      expect(DEFAULT_CONFIG.paths.tempDir).toBe('.tmp/arcfetch');
     });
 
     test('default docsDir is docs/ai/references', () => {

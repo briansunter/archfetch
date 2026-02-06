@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Arcfetch MCP Server
  *
@@ -9,13 +10,14 @@
  * - delete_cached: Delete a cached reference
  */
 
-import { getVersion } from './src/utils/version';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { loadConfig } from './src/config/index';
-import { fetchUrl, closeBrowser } from './src/core/pipeline';
-import { saveToTemp, listCached, promoteReference, deleteCached, extractLinksFromCached } from './src/core/cache';
+import { deleteCached, extractLinksFromCached, listCached, promoteReference, saveToTemp } from './src/core/cache';
+import { fetchLinksFromRef } from './src/core/fetch-links';
+import { closeBrowser, fetchUrl } from './src/core/pipeline';
+import { getVersion } from './src/utils/version';
 
 const server = new Server(
   {
@@ -59,7 +61,7 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
             },
             tempDir: {
               type: 'string',
-              description: 'Optional: Temp folder path (default: .tmp)',
+              description: 'Optional: Temp folder path (default: .tmp/arcfetch)',
             },
             outputFormat: {
               type: 'string',
@@ -83,7 +85,7 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
           properties: {
             tempDir: {
               type: 'string',
-              description: 'Optional: Temp folder path (default: .tmp)',
+              description: 'Optional: Temp folder path (default: .tmp/arcfetch)',
             },
           },
         },
@@ -123,7 +125,8 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
       },
       {
         name: 'extract_links',
-        description: 'Extract all http/https links from a cached reference markdown. Returns list of links with their text and URLs.',
+        description:
+          'Extract all http/https links from a cached reference markdown. Returns list of links with their text and URLs.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -142,7 +145,8 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
       },
       {
         name: 'fetch_links',
-        description: 'Fetch all links from a cached reference. Extracts links and fetches each one, caching as new references. Uses parallel fetching (max 5 concurrent).',
+        description:
+          'Fetch all links from a cached reference. Extracts links and fetches each one, caching as new references. Uses parallel fetching (max 5 concurrent).',
         inputSchema: {
           type: 'object',
           properties: {
@@ -270,23 +274,31 @@ async function handleFetchUrl(args: {
     }
     if (outputFormat === 'json') {
       return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            alreadyExists: true,
-            refId: saveResult.refId,
-            filepath: saveResult.filepath,
-            message: 'URL already fetched. Use refetch: true to update.',
-          }, null, 2),
-        }],
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                success: true,
+                alreadyExists: true,
+                refId: saveResult.refId,
+                filepath: saveResult.filepath,
+                message: 'URL already fetched. Use refetch: true to update.',
+              },
+              null,
+              2
+            ),
+          },
+        ],
       };
     }
     return {
-      content: [{
-        type: 'text',
-        text: `Already cached: ${saveResult.refId}\nFilepath: ${saveResult.filepath}\n\nUse refetch: true to update.`,
-      }],
+      content: [
+        {
+          type: 'text',
+          text: `Already cached: ${saveResult.refId}\nFilepath: ${saveResult.filepath}\n\nUse refetch: true to update.`,
+        },
+      ],
     };
   }
 
@@ -425,15 +437,21 @@ async function handleExtractLinks(args: { refId: string; outputFormat?: 'summary
 
   if (args.outputFormat === 'json') {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          success: true,
-          sourceRef: result.sourceRef,
-          count: result.count,
-          links: result.links,
-        }, null, 2),
-      }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              success: true,
+              sourceRef: result.sourceRef,
+              count: result.count,
+              links: result.links,
+            },
+            null,
+            2
+          ),
+        },
+      ],
     };
   }
 
@@ -453,27 +471,22 @@ async function handleExtractLinks(args: { refId: string; outputFormat?: 'summary
   };
 }
 
-interface FetchLinksResult {
-  url: string;
-  status: 'new' | 'cached' | 'failed';
-  refId?: string;
-  error?: string;
-}
-
 async function handleFetchLinks(args: { refId: string; refetch?: boolean; outputFormat?: 'summary' | 'json' }) {
   const config = loadConfig();
-  const linksResult = extractLinksFromCached(config, args.refId);
+  const { results, summary, error } = await fetchLinksFromRef(config, args.refId, { refetch: args.refetch });
 
-  if (linksResult.error) {
+  if (error) {
     return {
-      content: [{ type: 'text', text: `Error: ${linksResult.error}` }],
+      content: [{ type: 'text', text: `Error: ${error}` }],
     };
   }
 
-  if (linksResult.count === 0) {
+  if (results.length === 0) {
     if (args.outputFormat === 'json') {
       return {
-        content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'No links to fetch', results: [] }, null, 2) }],
+        content: [
+          { type: 'text', text: JSON.stringify({ success: true, message: 'No links to fetch', results: [] }, null, 2) },
+        ],
       };
     }
     return {
@@ -481,67 +494,23 @@ async function handleFetchLinks(args: { refId: string; refetch?: boolean; output
     };
   }
 
-  const results: FetchLinksResult[] = [];
-  const concurrency = 5;
-  const urls = linksResult.links.map(l => l.href);
-
-  // Process in batches of 5
-  for (let i = 0; i < urls.length; i += concurrency) {
-    const batch = urls.slice(i, i + concurrency);
-    const batchPromises = batch.map(async (url): Promise<FetchLinksResult> => {
-      try {
-        const fetchResult = await fetchUrl(url, config, false);
-
-        if (!fetchResult.success) {
-          return { url, status: 'failed', error: fetchResult.error };
-        }
-
-        const saveResult = await saveToTemp(
-          config,
-          fetchResult.title!,
-          url,
-          fetchResult.markdown!,
-          undefined,
-          args.refetch
-        );
-
-        if (saveResult.error) {
-          return { url, status: 'failed', error: saveResult.error };
-        }
-
-        if (saveResult.alreadyExists) {
-          return { url, status: 'cached', refId: saveResult.refId };
-        }
-
-        return { url, status: 'new', refId: saveResult.refId };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { url, status: 'failed', error: message };
-      }
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-  }
-
-  // Close browser after all fetches
-  await closeBrowser();
-
-  const newCount = results.filter(r => r.status === 'new').length;
-  const cachedCount = results.filter(r => r.status === 'cached').length;
-  const failedCount = results.filter(r => r.status === 'failed').length;
-
   if (args.outputFormat === 'json') {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          success: true,
-          sourceRef: args.refId,
-          summary: { new: newCount, cached: cachedCount, failed: failedCount },
-          results,
-        }, null, 2),
-      }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              success: true,
+              sourceRef: args.refId,
+              summary,
+              results,
+            },
+            null,
+            2
+          ),
+        },
+      ],
     };
   }
 
@@ -555,7 +524,7 @@ async function handleFetchLinks(args: { refId: string; refetch?: boolean; output
       text += `failed: ${r.url} - ${r.error}\n`;
     }
   }
-  text += `\nSummary: ${newCount} new, ${cachedCount} cached, ${failedCount} failed`;
+  text += `\nSummary: ${summary.new} new, ${summary.cached} cached, ${summary.failed} failed`;
 
   return {
     content: [{ type: 'text', text }],

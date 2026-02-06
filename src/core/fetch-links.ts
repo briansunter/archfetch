@@ -1,0 +1,85 @@
+import type { FetchiConfig } from '../config/schema';
+import { extractLinksFromCached, saveToTemp } from './cache';
+import { closeBrowser, fetchUrl } from './pipeline';
+
+export interface FetchLinkResult {
+  url: string;
+  status: 'new' | 'cached' | 'failed';
+  refId?: string;
+  error?: string;
+}
+
+export interface FetchLinksFromRefResult {
+  results: FetchLinkResult[];
+  summary: { new: number; cached: number; failed: number };
+  error?: string;
+}
+
+export async function fetchLinksFromRef(
+  config: FetchiConfig,
+  refId: string,
+  options?: { refetch?: boolean; verbose?: boolean; onProgress?: (result: FetchLinkResult) => void }
+): Promise<FetchLinksFromRefResult> {
+  const linksResult = extractLinksFromCached(config, refId);
+
+  if (linksResult.error) {
+    return { results: [], summary: { new: 0, cached: 0, failed: 0 }, error: linksResult.error };
+  }
+
+  if (linksResult.count === 0) {
+    return { results: [], summary: { new: 0, cached: 0, failed: 0 } };
+  }
+
+  const results: FetchLinkResult[] = [];
+  const concurrency = 5;
+  const urls = linksResult.links.map((l) => l.href);
+  const verbose = options?.verbose ?? false;
+  const refetch = options?.refetch ?? false;
+
+  for (let i = 0; i < urls.length; i += concurrency) {
+    const batch = urls.slice(i, i + concurrency);
+    const batchPromises = batch.map(async (url): Promise<FetchLinkResult> => {
+      try {
+        const fetchResult = await fetchUrl(url, config, verbose);
+
+        if (!fetchResult.success) {
+          return { url, status: 'failed', error: fetchResult.error };
+        }
+
+        const saveResult = await saveToTemp(config, fetchResult.title!, url, fetchResult.markdown!, undefined, refetch);
+
+        if (saveResult.error) {
+          return { url, status: 'failed', error: saveResult.error };
+        }
+
+        if (saveResult.alreadyExists) {
+          return { url, status: 'cached', refId: saveResult.refId };
+        }
+
+        return { url, status: 'new', refId: saveResult.refId };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { url, status: 'failed', error: message };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults);
+
+    if (options?.onProgress) {
+      for (const r of batchResults) {
+        options.onProgress(r);
+      }
+    }
+  }
+
+  await closeBrowser();
+
+  const summary = {
+    new: results.filter((r) => r.status === 'new').length,
+    cached: results.filter((r) => r.status === 'cached').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+  };
+
+  return { results, summary };
+}

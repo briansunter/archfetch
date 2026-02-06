@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 
-import { getVersion } from './src/utils/version';
-import { loadConfig } from './src/config/index';
-import { fetchUrl, closeBrowser } from './src/core/pipeline';
-import { saveToTemp, listCached, promoteReference, deleteCached, extractLinksFromCached } from './src/core/cache';
 import { serveMcp } from './index';
+import { loadConfig } from './src/config/index';
+import { deleteCached, extractLinksFromCached, listCached, promoteReference, saveToTemp } from './src/core/cache';
+import { type FetchLinkResult, fetchLinksFromRef } from './src/core/fetch-links';
+import { closeBrowser, fetchUrl } from './src/core/pipeline';
+import { getVersion } from './src/utils/version';
 
 // ============================================================================
 // HELP
@@ -39,7 +40,7 @@ OPTIONS:
     --refetch                 Re-fetch and update even if URL already cached
     -v, --verbose             Show detailed output
     --min-quality <n>         Minimum quality score 0-100 (default: 60)
-    --temp-dir <path>         Temp folder (default: .tmp)
+    --temp-dir <path>         Temp folder (default: .tmp/arcfetch)
     --docs-dir <path>         Docs folder (default: docs/ai/references)
     --wait-strategy <mode>    Playwright wait strategy: networkidle, domcontentloaded, load
     --force-playwright        Skip simple fetch and use Playwright directly
@@ -142,7 +143,14 @@ async function commandFetch(options: FetchOptions): Promise<void> {
   }
 
   // Save to temp
-  const saveResult = await saveToTemp(config, result.title!, options.url, result.markdown!, options.query, options.refetch);
+  const saveResult = await saveToTemp(
+    config,
+    result.title!,
+    options.url,
+    result.markdown!,
+    options.query,
+    options.refetch
+  );
 
   // Small delay to ensure file is flushed to disk (Bun-specific issue)
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -159,13 +167,19 @@ async function commandFetch(options: FetchOptions): Promise<void> {
   // Handle already exists case
   if (saveResult.alreadyExists) {
     if (options.output === 'json') {
-      console.log(JSON.stringify({
-        success: true,
-        alreadyExists: true,
-        refId: saveResult.refId,
-        filepath: saveResult.filepath,
-        message: 'URL already fetched. Use --refetch to update.',
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            success: true,
+            alreadyExists: true,
+            refId: saveResult.refId,
+            filepath: saveResult.filepath,
+            message: 'URL already fetched. Use --refetch to update.',
+          },
+          null,
+          2
+        )
+      );
     } else if (options.output === 'path') {
       console.log(saveResult.filepath);
     } else if (options.pretty) {
@@ -374,12 +388,18 @@ async function commandLinks(refId: string, output: 'text' | 'json', pretty: bool
   }
 
   if (output === 'json') {
-    console.log(JSON.stringify({
-      success: true,
-      sourceRef: result.sourceRef,
-      count: result.count,
-      links: result.links,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          success: true,
+          sourceRef: result.sourceRef,
+          count: result.count,
+          links: result.links,
+        },
+        null,
+        2
+      )
+    );
     return;
   }
 
@@ -411,13 +431,6 @@ async function commandLinks(refId: string, output: 'text' | 'json', pretty: bool
 // FETCH-LINKS COMMAND
 // ============================================================================
 
-interface FetchLinksResult {
-  url: string;
-  status: 'new' | 'cached' | 'failed';
-  refId?: string;
-  error?: string;
-}
-
 async function commandFetchLinks(
   refId: string,
   output: 'text' | 'json',
@@ -426,120 +439,75 @@ async function commandFetchLinks(
   refetch: boolean
 ): Promise<void> {
   const config = loadConfig();
-  const linksResult = extractLinksFromCached(config, refId);
 
-  if (linksResult.error) {
+  const printProgress =
+    output !== 'json'
+      ? (r: FetchLinkResult) => {
+          if (pretty) {
+            if (r.status === 'new') {
+              console.log(`\u2713 ${r.refId} (new)`);
+            } else if (r.status === 'cached') {
+              console.log(`\u25CB ${r.refId} (already cached)`);
+            } else {
+              console.log(`\u2717 ${r.url.slice(0, 50)}... (${r.error})`);
+            }
+          } else {
+            if (r.status === 'new') {
+              console.log(`new: ${r.refId}`);
+            } else if (r.status === 'cached') {
+              console.log(`cached: ${r.refId}`);
+            } else {
+              console.log(`failed: ${r.url} - ${r.error}`);
+            }
+          }
+        }
+      : undefined;
+
+  const { results, summary, error } = await fetchLinksFromRef(config, refId, {
+    refetch,
+    verbose,
+    onProgress: printProgress,
+  });
+
+  if (error) {
     if (output === 'json') {
-      console.log(JSON.stringify({ success: false, error: linksResult.error }, null, 2));
+      console.log(JSON.stringify({ success: false, error }, null, 2));
     } else {
-      console.error(`Error: ${linksResult.error}`);
+      console.error(`Error: ${error}`);
     }
     process.exit(1);
   }
 
-  if (linksResult.count === 0) {
+  if (results.length === 0) {
     if (output === 'json') {
       console.log(JSON.stringify({ success: true, message: 'No links to fetch', results: [] }, null, 2));
     } else if (pretty) {
-      console.log(`🔗 No links found in ${refId}`);
+      console.log(`No links found in ${refId}`);
     } else {
       console.log(`No links found in ${refId}`);
     }
     return;
   }
 
-  if (pretty) {
-    console.log(`🔗 Fetching ${linksResult.count} links from ${refId}...\n`);
-  } else if (output !== 'json') {
-    console.log(`Fetching ${linksResult.count} links from ${refId}...\n`);
-  }
-
-  const results: FetchLinksResult[] = [];
-  const concurrency = 5;
-  const urls = linksResult.links.map(l => l.href);
-
-  // Process in batches of 5
-  for (let i = 0; i < urls.length; i += concurrency) {
-    const batch = urls.slice(i, i + concurrency);
-    const batchPromises = batch.map(async (url): Promise<FetchLinksResult> => {
-      try {
-        const fetchResult = await fetchUrl(url, config, verbose);
-
-        if (!fetchResult.success) {
-          return { url, status: 'failed', error: fetchResult.error };
-        }
-
-        const saveResult = await saveToTemp(
-          config,
-          fetchResult.title!,
-          url,
-          fetchResult.markdown!,
-          undefined,
-          refetch
-        );
-
-        if (saveResult.error) {
-          return { url, status: 'failed', error: saveResult.error };
-        }
-
-        if (saveResult.alreadyExists) {
-          return { url, status: 'cached', refId: saveResult.refId };
-        }
-
-        return { url, status: 'new', refId: saveResult.refId };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { url, status: 'failed', error: message };
-      }
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-
-    // Print progress for non-json output
-    if (output !== 'json') {
-      for (const r of batchResults) {
-        if (pretty) {
-          if (r.status === 'new') {
-            console.log(`✓ ${r.refId} (new)`);
-          } else if (r.status === 'cached') {
-            console.log(`○ ${r.refId} (already cached)`);
-          } else {
-            console.log(`✗ ${r.url.slice(0, 50)}... (${r.error})`);
-          }
-        } else {
-          if (r.status === 'new') {
-            console.log(`new: ${r.refId}`);
-          } else if (r.status === 'cached') {
-            console.log(`cached: ${r.refId}`);
-          } else {
-            console.log(`failed: ${r.url} - ${r.error}`);
-          }
-        }
-      }
-    }
-  }
-
-  // Close browser after all fetches
-  await closeBrowser();
-
-  const newCount = results.filter(r => r.status === 'new').length;
-  const cachedCount = results.filter(r => r.status === 'cached').length;
-  const failedCount = results.filter(r => r.status === 'failed').length;
-
   if (output === 'json') {
-    console.log(JSON.stringify({
-      success: true,
-      sourceRef: refId,
-      summary: { new: newCount, cached: cachedCount, failed: failedCount },
-      results,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          success: true,
+          sourceRef: refId,
+          summary,
+          results,
+        },
+        null,
+        2
+      )
+    );
   } else {
     console.log('');
     if (pretty) {
-      console.log(`📊 Summary: ${newCount} new, ${cachedCount} cached, ${failedCount} failed`);
+      console.log(`Summary: ${summary.new} new, ${summary.cached} cached, ${summary.failed} failed`);
     } else {
-      console.log(`Summary: ${newCount} new, ${cachedCount} cached, ${failedCount} failed`);
+      console.log(`Summary: ${summary.new} new, ${summary.cached} cached, ${summary.failed} failed`);
     }
   }
 }
@@ -548,7 +516,7 @@ async function commandFetchLinks(
 // ARGUMENT PARSING
 // ============================================================================
 
-interface ParsedOptions {
+export interface ParsedOptions {
   output: 'text' | 'json' | 'summary' | 'path';
   verbose: boolean;
   pretty: boolean;
@@ -561,7 +529,7 @@ interface ParsedOptions {
   forcePlaywright?: boolean;
 }
 
-function parseArgs(): { command: string; args: string[]; options: ParsedOptions } {
+export function parseArgs(): { command: string; args: string[]; options: ParsedOptions } {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
@@ -691,7 +659,13 @@ async function main(): Promise<void> {
           console.error('Error: Reference ID required. Usage: arcfetch fetch-links <ref-id>');
           process.exit(1);
         }
-        await commandFetchLinks(args[0], options.output === 'json' ? 'json' : 'text', options.pretty, options.verbose, options.refetch);
+        await commandFetchLinks(
+          args[0],
+          options.output === 'json' ? 'json' : 'text',
+          options.pretty,
+          options.verbose,
+          options.refetch
+        );
         break;
 
       default:

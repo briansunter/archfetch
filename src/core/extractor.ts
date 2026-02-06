@@ -1,7 +1,7 @@
-import TurndownService from 'turndown';
-import { gfm } from 'turndown-plugin-gfm';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
+import TurndownService from 'turndown';
+import { gfm } from 'turndown-plugin-gfm';
 import { cleanMarkdownComplete } from '../utils/markdown-cleaner';
 
 export interface ExtractionResult {
@@ -29,11 +29,7 @@ turndown.addRule('removeComments', {
   replacement: () => '',
 });
 
-export async function processHtmlToMarkdown(
-  html: string,
-  url: string,
-  verbose = false
-): Promise<ExtractionResult> {
+export async function processHtmlToMarkdown(html: string, url: string, verbose = false): Promise<ExtractionResult> {
   try {
     if (verbose) {
       console.error(`📝 Processing HTML (${html.length} chars)`);

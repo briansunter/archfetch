@@ -194,7 +194,7 @@ Create `arcfetch.config.json` in your project root:
     "jsRetryThreshold": 85
   },
   "paths": {
-    "tempDir": ".tmp",
+    "tempDir": ".tmp/arcfetch",
     "docsDir": "docs/ai/references"
   },
   "playwright": {
@@ -208,7 +208,7 @@ Create `arcfetch.config.json` in your project root:
 
 ```bash
 ARCFETCH_MIN_SCORE=60
-ARCFETCH_TEMP_DIR=.tmp
+ARCFETCH_TEMP_DIR=.tmp/arcfetch
 ARCFETCH_DOCS_DIR=docs/ai/references
 ```
 
