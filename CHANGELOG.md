@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/briansunter/arcfetch/compare/v1.2.0...v1.2.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* show friendly error when Playwright browsers are not installed ([b140c7b](https://github.com/briansunter/arcfetch/commit/b140c7b253949d77d5fe21451b580e946454c070))
+
 # [1.2.0](https://github.com/briansunter/arcfetch/compare/v1.1.1...v1.2.0) (2026-02-06)
 
 
