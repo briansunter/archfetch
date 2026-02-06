@@ -17,19 +17,27 @@ export class LocalBrowserManager implements BrowserManager {
 
   async getBrowser(): Promise<Browser> {
     if (!browserInstance) {
-      browserInstance = await chromium.launch({
-        headless: true,
-        timeout: this.config.timeout,
-        args: [
-          '--disable-blink-features=AutomationControlled',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--disable-infobars',
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--disable-background-networking',
-          '--disable-dev-shm-usage',
-        ],
-      });
+      try {
+        browserInstance = await chromium.launch({
+          headless: true,
+          timeout: this.config.timeout,
+          args: [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-infobars',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-background-networking',
+            '--disable-dev-shm-usage',
+          ],
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('Executable') || message.includes('browserType.launch')) {
+          throw new Error('Playwright browsers are not installed. Run: npx playwright install chromium');
+        }
+        throw error;
+      }
     }
     return browserInstance;
   }
