@@ -1,3 +1,11 @@
+# [1.2.0](https://github.com/briansunter/arcfetch/compare/v1.1.1...v1.2.0) (2026-02-06)
+
+
+### Features
+
+* improve CLAUDE.md accuracy and add Claude Code automations ([88b86a9](https://github.com/briansunter/arcfetch/commit/88b86a9fcbe75d285693c4a65b5f6c63898ac496))
+* improve quality validation, anti-bot detection, and codebase health ([9dd9413](https://github.com/briansunter/arcfetch/commit/9dd9413b849c599e6d06a6c2b52327195d8c764d))
+
 ## [1.1.1](https://github.com/briansunter/arcfetch/compare/v1.1.0...v1.1.1) (2026-01-01)
 
 
