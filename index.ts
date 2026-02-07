@@ -146,7 +146,7 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
       {
         name: 'fetch_links',
         description:
-          'Fetch all links from a cached reference. Extracts links and fetches each one, caching as new references. Uses parallel fetching (max 5 concurrent).',
+          'Fetch all links from a cached reference. Extracts links and fetches each one, caching as new references. Uses parallel fetching (max 3 concurrent).',
         inputSchema: {
           type: 'object',
           properties: {

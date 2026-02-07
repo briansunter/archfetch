@@ -31,7 +31,7 @@ export async function fetchLinksFromRef(
   }
 
   const results: FetchLinkResult[] = [];
-  const concurrency = 5;
+  const concurrency = 3;
   const urls = linksResult.links.map((l) => l.href);
   const verbose = options?.verbose ?? false;
   const refetch = options?.refetch ?? false;

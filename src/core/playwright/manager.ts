@@ -3,6 +3,7 @@ import { LocalBrowserManager } from './local';
 import type { BrowserManager, FetchWithBrowserResult } from './types';
 
 let currentManager: BrowserManager | null = null;
+let activeContexts = 0;
 
 export async function getBrowserManager(config: PlaywrightConfig): Promise<BrowserManager> {
   if (currentManager) {
@@ -31,10 +32,50 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** Hard timeout for the entire browser fetch operation (browser launch + navigation + content extraction) */
+const BROWSER_FETCH_TIMEOUT = 45_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export async function fetchWithBrowser(
   url: string,
   config: PlaywrightConfig,
   verbose = false
+): Promise<FetchWithBrowserResult> {
+  activeContexts++;
+
+  try {
+    return await withTimeout(
+      doFetchWithBrowser(url, config, verbose),
+      BROWSER_FETCH_TIMEOUT,
+      `Playwright fetch ${url}`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { html: '', error: message };
+  } finally {
+    activeContexts--;
+  }
+}
+
+async function doFetchWithBrowser(
+  url: string,
+  config: PlaywrightConfig,
+  verbose: boolean
 ): Promise<FetchWithBrowserResult> {
   const manager = await getBrowserManager(config);
   const browser = await manager.getBrowser();
@@ -120,14 +161,23 @@ export async function fetchWithBrowser(
     const message = error instanceof Error ? error.message : String(error);
     return { html: '', error: message };
   } finally {
-    await page.close();
-    await context.close();
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
   }
 }
 
 export async function closeBrowser(): Promise<void> {
-  if (currentManager) {
-    await currentManager.closeBrowser();
-    currentManager = null;
+  if (!currentManager) return;
+
+  // Don't close if other contexts are still active
+  if (activeContexts > 0) {
+    return;
   }
+
+  try {
+    await withTimeout(currentManager.closeBrowser(), 5_000, 'closeBrowser');
+  } catch {
+    // Force-clear even if close times out
+  }
+  currentManager = null;
 }
