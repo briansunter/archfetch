@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/briansunter/arcfetch/compare/v1.2.1...v1.2.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* prevent hanging with concurrent fetches and parallel subagents ([0a0f959](https://github.com/briansunter/arcfetch/commit/0a0f95974448b9fe1546acd4d9bd2b8e6cf7fa46))
+
 ## [1.2.1](https://github.com/briansunter/arcfetch/compare/v1.2.0...v1.2.1) (2026-02-06)
 
 
