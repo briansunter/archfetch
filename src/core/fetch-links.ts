@@ -1,4 +1,5 @@
 import type { FetchiConfig } from '../config/schema';
+import { getErrorMessage } from '../utils/error';
 import { extractLinksFromCached, saveToTemp } from './cache';
 import { closeBrowser, fetchUrl } from './pipeline';
 
@@ -15,6 +16,8 @@ export interface FetchLinksFromRefResult {
   error?: string;
 }
 
+const MAX_LINKS = 200;
+
 export async function fetchLinksFromRef(
   config: FetchiConfig,
   refId: string,
@@ -30,9 +33,19 @@ export async function fetchLinksFromRef(
     return { results: [], summary: { new: 0, cached: 0, failed: 0 } };
   }
 
+  const urls = linksResult.links.map((l) => l.href);
+
+  if (urls.length > MAX_LINKS) {
+    await closeBrowser();
+    return {
+      results: [],
+      summary: { new: 0, cached: 0, failed: urls.length },
+      error: `Too many links (${urls.length}). Maximum is ${MAX_LINKS}. Filter links before fetching.`,
+    };
+  }
+
   const results: FetchLinkResult[] = [];
   const concurrency = 3;
-  const urls = linksResult.links.map((l) => l.href);
   const verbose = options?.verbose ?? false;
   const refetch = options?.refetch ?? false;
 
@@ -46,7 +59,7 @@ export async function fetchLinksFromRef(
           return { url, status: 'failed', error: fetchResult.error };
         }
 
-        const saveResult = await saveToTemp(config, fetchResult.title!, url, fetchResult.markdown!, undefined, refetch);
+        const saveResult = await saveToTemp(config, fetchResult.title, url, fetchResult.markdown, undefined, refetch);
 
         if (saveResult.error) {
           return { url, status: 'failed', error: saveResult.error };
@@ -58,7 +71,7 @@ export async function fetchLinksFromRef(
 
         return { url, status: 'new', refId: saveResult.refId };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         return { url, status: 'failed', error: message };
       }
     });

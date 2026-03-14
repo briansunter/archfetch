@@ -1,4 +1,5 @@
 import type { PlaywrightConfig } from '../../config/schema';
+import { getErrorMessage } from '../../utils/error';
 import { LocalBrowserManager } from './local';
 import type { BrowserManager, FetchWithBrowserResult } from './types';
 
@@ -65,7 +66,7 @@ export async function fetchWithBrowser(
       `Playwright fetch ${url}`
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { html: '', error: message };
   } finally {
     activeContexts--;
@@ -158,11 +159,15 @@ async function doFetchWithBrowser(
 
     return { html };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { html: '', error: message };
   } finally {
-    await page.close().catch(() => {});
-    await context.close().catch(() => {});
+    await page.close().catch((e) => {
+      console.error('Warning: Failed to close page:', getErrorMessage(e));
+    });
+    await context.close().catch((e) => {
+      console.error('Warning: Failed to close context:', getErrorMessage(e));
+    });
   }
 }
 
@@ -176,8 +181,8 @@ export async function closeBrowser(): Promise<void> {
 
   try {
     await withTimeout(currentManager.closeBrowser(), 5_000, 'closeBrowser');
-  } catch {
-    // Force-clear even if close times out
+  } catch (e) {
+    console.error('Warning: Failed to close browser:', getErrorMessage(e));
   }
   currentManager = null;
 }

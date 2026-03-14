@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
+import { getErrorMessage } from '../utils/error';
 import { DEFAULT_CONFIG } from './defaults';
 import { type FetchiConfig, FetchiConfigSchema } from './schema';
 
@@ -23,8 +25,8 @@ export function loadConfigFromFile(path: string): Partial<FetchiConfig> {
   try {
     const content = readFileSync(path, 'utf-8');
     return JSON.parse(content);
-  } catch {
-    console.warn(`Warning: Could not load config from ${path}`);
+  } catch (error) {
+    console.error(`Warning: Could not load config from ${path}: ${getErrorMessage(error)}`);
     return {};
   }
 }
@@ -94,7 +96,15 @@ export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig 
     config.playwright.timeout = cliOverrides.timeout;
   }
 
-  return FetchiConfigSchema.parse(config);
+  try {
+    return FetchiConfigSchema.parse(config);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const issues = error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');
+      throw new Error(`Invalid configuration: ${issues}`);
+    }
+    throw error;
+  }
 }
 
 function deepMerge<T extends Record<string, unknown>>(target: T, source: DeepPartial<T>): T {

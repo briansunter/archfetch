@@ -13,11 +13,46 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
 import { loadConfig } from './src/config/index';
 import { deleteCached, extractLinksFromCached, listCached, promoteReference, saveToTemp } from './src/core/cache';
 import { fetchLinksFromRef } from './src/core/fetch-links';
 import { closeBrowser, fetchUrl } from './src/core/pipeline';
+import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
+
+const FetchUrlArgsSchema = z.object({
+  url: z.string(),
+  query: z.string().optional(),
+  minQuality: z.number().min(0).max(100).optional(),
+  tempDir: z.string().optional(),
+  outputFormat: z.enum(['summary', 'path', 'json']).optional(),
+  refetch: z.boolean().optional(),
+});
+
+const ListCachedArgsSchema = z.object({
+  tempDir: z.string().optional(),
+});
+
+const PromoteReferenceArgsSchema = z.object({
+  refId: z.string(),
+  docsDir: z.string().optional(),
+});
+
+const RefIdArgsSchema = z.object({
+  refId: z.string(),
+});
+
+const ExtractLinksArgsSchema = z.object({
+  refId: z.string(),
+  outputFormat: z.enum(['summary', 'json']).optional(),
+});
+
+const FetchLinksArgsSchema = z.object({
+  refId: z.string(),
+  refetch: z.boolean().optional(),
+  outputFormat: z.enum(['summary', 'json']).optional(),
+});
 
 const server = new Server(
   {
@@ -172,62 +207,48 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  try {
+    const { name, arguments: args } = request.params;
 
-  switch (name) {
-    case 'fetch_url':
-      return handleFetchUrl(
-        args as {
-          url: string;
-          query?: string;
-          minQuality?: number;
-          tempDir?: string;
-          outputFormat?: 'summary' | 'path' | 'json';
-          refetch?: boolean;
-        }
-      );
+    switch (name) {
+      case 'fetch_url':
+        return handleFetchUrl(FetchUrlArgsSchema.parse(args));
 
-    case 'list_cached':
-      return handleListCached(
-        args as {
-          tempDir?: string;
-        }
-      );
+      case 'list_cached':
+        return handleListCached(ListCachedArgsSchema.parse(args));
 
-    case 'promote_reference':
-      return handlePromoteReference(
-        args as {
-          refId: string;
-          docsDir?: string;
-        }
-      );
+      case 'promote_reference':
+        return handlePromoteReference(PromoteReferenceArgsSchema.parse(args));
 
-    case 'delete_cached':
-      return handleDeleteCached(
-        args as {
-          refId: string;
-        }
-      );
+      case 'delete_cached':
+        return handleDeleteCached(RefIdArgsSchema.parse(args));
 
-    case 'extract_links':
-      return handleExtractLinks(
-        args as {
-          refId: string;
-          outputFormat?: 'summary' | 'json';
-        }
-      );
+      case 'extract_links':
+        return handleExtractLinks(ExtractLinksArgsSchema.parse(args));
 
-    case 'fetch_links':
-      return handleFetchLinks(
-        args as {
-          refId: string;
-          refetch?: boolean;
-          outputFormat?: 'summary' | 'json';
-        }
-      );
+      case 'fetch_links':
+        return handleFetchLinks(FetchLinksArgsSchema.parse(args));
 
-    default:
-      throw new Error(`Unknown tool: ${name}`);
+      default:
+        return {
+          content: [{ type: 'text', text: `Error: Unknown tool: ${name}` }],
+        };
+    }
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Invalid arguments: ${error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+          },
+        ],
+      };
+    }
+    const message = getErrorMessage(error);
+    return {
+      content: [{ type: 'text', text: `Error: ${message}` }],
+    };
   }
 });
 
@@ -258,7 +279,7 @@ async function handleFetchUrl(args: {
     };
   }
 
-  const saveResult = await saveToTemp(config, result.title!, args.url, result.markdown!, args.query, args.refetch);
+  const saveResult = await saveToTemp(config, result.title, args.url, result.markdown, args.query, args.refetch);
 
   if (saveResult.error) {
     return {
@@ -322,9 +343,9 @@ async function handleFetchUrl(args: {
       excerpt: result.excerpt,
       url: args.url,
       filepath: saveResult.filepath,
-      size: result.markdown!.length,
-      tokens: Math.round(result.markdown!.length / 4),
-      quality: result.quality?.score,
+      size: result.markdown.length,
+      tokens: Math.round(result.markdown.length / 4),
+      quality: result.quality.score,
       usedPlaywright: result.usedPlaywright,
       playwrightReason: result.playwrightReason,
       query: args.query,
@@ -344,8 +365,9 @@ async function handleFetchUrl(args: {
     text += `Summary: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}\n`;
   }
   text += `\nFilepath: ${saveResult.filepath}\n`;
-  text += `Size: ${result.markdown!.length} chars (~${Math.round(result.markdown!.length / 4)} tokens)\n`;
-  text += `Quality: ${result.quality?.score}/100`;
+  const markdownLength = result.markdown.length;
+  text += `Size: ${markdownLength} chars (~${Math.round(markdownLength / 4)} tokens)\n`;
+  text += `Quality: ${result.quality.score}/100`;
 
   if (result.usedPlaywright) {
     text += `\nPlaywright: Yes (${result.playwrightReason})`;
@@ -532,6 +554,13 @@ async function handleFetchLinks(args: { refId: string; refetch?: boolean; output
 }
 
 export async function serveMcp() {
+  const cleanup = async () => {
+    await closeBrowser();
+    process.exit(0);
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`Arcfetch MCP server v${getVersion()} running on stdio`);
@@ -540,7 +569,7 @@ export async function serveMcp() {
 // Auto-start if run directly
 if (import.meta.main) {
   serveMcp().catch((error) => {
-    console.error('Server error:', error);
+    console.error('Server error:', getErrorMessage(error));
     process.exit(1);
   });
 }

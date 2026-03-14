@@ -5,6 +5,7 @@ import { loadConfig } from './src/config/index';
 import { deleteCached, extractLinksFromCached, listCached, promoteReference, saveToTemp } from './src/core/cache';
 import { type FetchLinkResult, fetchLinksFromRef } from './src/core/fetch-links';
 import { closeBrowser, fetchUrl } from './src/core/pipeline';
+import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
 
 // ============================================================================
@@ -145,9 +146,9 @@ async function commandFetch(options: FetchOptions): Promise<void> {
   // Save to temp
   const saveResult = await saveToTemp(
     config,
-    result.title!,
+    result.title,
     options.url,
-    result.markdown!,
+    result.markdown,
     options.query,
     options.refetch
   );
@@ -207,9 +208,9 @@ async function commandFetch(options: FetchOptions): Promise<void> {
           excerpt: result.excerpt,
           url: options.url,
           filepath: saveResult.filepath,
-          size: result.markdown!.length,
-          tokens: Math.round(result.markdown!.length / 4),
-          quality: result.quality?.score,
+          size: result.markdown.length,
+          tokens: Math.round(result.markdown.length / 4),
+          quality: result.quality.score,
           usedPlaywright: result.usedPlaywright,
           playwrightReason: result.playwrightReason,
           query: options.query,
@@ -233,8 +234,8 @@ async function commandFetch(options: FetchOptions): Promise<void> {
       console.log(`**Summary**: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}`);
     }
     console.log(`\n**Saved to**: ${saveResult.filepath}`);
-    console.log(`**Size**: ${result.markdown!.length} chars (~${Math.round(result.markdown!.length / 4)} tokens)`);
-    console.log(`**Quality**: ${result.quality?.score}/100`);
+    console.log(`**Size**: ${result.markdown.length} chars (~${Math.round(result.markdown.length / 4)} tokens)`);
+    console.log(`**Quality**: ${result.quality.score}/100`);
     if (result.usedPlaywright) {
       console.log(`**Playwright**: Yes (${result.playwrightReason})`);
     }
@@ -250,8 +251,8 @@ async function commandFetch(options: FetchOptions): Promise<void> {
       console.log(`Summary: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}`);
     }
     console.log(`Filepath: ${saveResult.filepath}`);
-    console.log(`Size: ${result.markdown!.length} chars (~${Math.round(result.markdown!.length / 4)} tokens)`);
-    console.log(`Quality: ${result.quality?.score}/100`);
+    console.log(`Size: ${result.markdown.length} chars (~${Math.round(result.markdown.length / 4)} tokens)`);
+    console.log(`Quality: ${result.quality.score}/100`);
     if (result.usedPlaywright) {
       console.log(`Playwright: Yes (${result.playwrightReason})`);
     }
@@ -536,6 +537,14 @@ export function parseArgs(): { command: string; args: string[]; options: ParsedO
     return { command: 'help', args: [], options: { output: 'text', verbose: false, pretty: false, refetch: false } };
   }
 
+  const requiresValue = (flag: string, value: string | undefined): string => {
+    if (!value || value.startsWith('--')) {
+      console.error(`Error: ${flag} requires a value`);
+      process.exit(1);
+    }
+    return value;
+  };
+
   const command = args[0];
   const options: ParsedOptions = {
     output: 'text',
@@ -550,11 +559,14 @@ export function parseArgs(): { command: string; args: string[]; options: ParsedO
     const next = args[i + 1];
 
     if (arg === '-q' || arg === '--query') {
-      options.query = next;
+      options.query = requiresValue(arg, next);
       i++;
     } else if (arg === '-o' || arg === '--output') {
-      if (next === 'text' || next === 'json' || next === 'summary' || next === 'path') {
-        options.output = next;
+      const val = requiresValue(arg, next);
+      if (['text', 'json', 'summary', 'path'].includes(val)) {
+        options.output = val as 'text' | 'json' | 'summary' | 'path';
+      } else {
+        console.error(`Warning: Invalid output format '${val}'. Valid options: text, json, summary, path`);
       }
       i++;
     } else if (arg === '-v' || arg === '--verbose') {
@@ -562,17 +574,26 @@ export function parseArgs(): { command: string; args: string[]; options: ParsedO
     } else if (arg === '--pretty') {
       options.pretty = true;
     } else if (arg === '--min-quality') {
-      options.minQuality = parseInt(next, 10);
+      const raw = requiresValue(arg, next);
+      const val = parseInt(raw, 10);
+      if (Number.isNaN(val)) {
+        console.error('Error: --min-quality must be a number');
+        process.exit(1);
+      }
+      options.minQuality = val;
       i++;
     } else if (arg === '--temp-dir') {
-      options.tempDir = next;
+      options.tempDir = requiresValue(arg, next);
       i++;
     } else if (arg === '--docs-dir') {
-      options.docsDir = next;
+      options.docsDir = requiresValue(arg, next);
       i++;
     } else if (arg === '--wait-strategy') {
-      if (next === 'networkidle' || next === 'domcontentloaded' || next === 'load') {
-        options.waitStrategy = next;
+      const val = requiresValue(arg, next);
+      if (['networkidle', 'domcontentloaded', 'load'].includes(val)) {
+        options.waitStrategy = val as 'networkidle' | 'domcontentloaded' | 'load';
+      } else {
+        console.error(`Warning: Invalid wait strategy '${val}'. Valid options: networkidle, domcontentloaded, load`);
       }
       i++;
     } else if (arg === '--force-playwright') {
@@ -594,6 +615,13 @@ export function parseArgs(): { command: string; args: string[]; options: ParsedO
 // ============================================================================
 
 async function main(): Promise<void> {
+  const cleanup = async () => {
+    await closeBrowser();
+    process.exit(0);
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+
   const { command, args, options } = parseArgs();
 
   try {
@@ -673,12 +701,12 @@ async function main(): Promise<void> {
         break;
     }
   } catch (error) {
-    console.error('Error:', error instanceof Error ? error.message : String(error));
+    console.error('Error:', getErrorMessage(error));
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  console.error('Unexpected error:', err);
+  console.error('Unexpected error:', getErrorMessage(err));
   process.exit(1);
 });

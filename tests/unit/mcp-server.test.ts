@@ -152,7 +152,7 @@ describe('MCP server tools', () => {
 
       const result = await fetchUrl('ftp://example.com/file', config);
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid URL protocol');
+      if (!result.success) expect(result.error).toContain('Invalid URL protocol');
     });
 
     test('rejects invalid URLs', async () => {
@@ -162,7 +162,7 @@ describe('MCP server tools', () => {
 
       const result = await fetchUrl('not-a-url', config);
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid URL');
+      if (!result.success) expect(result.error).toContain('Invalid URL');
     });
   });
 });

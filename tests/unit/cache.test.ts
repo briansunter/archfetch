@@ -277,7 +277,7 @@ Just plain text without any links.`;
       // The URL should be on a single line with the newline removed
       const lines = content.split('\n');
       const urlLine = lines.find((l: string) => l.startsWith('source_url:'));
-      expect(urlLine).toBe('source_url: https://example.comevil_key: evil_value');
+      expect(urlLine).toBe('source_url: "https://example.com evil_key: evil_value"');
       // Critically, "evil_key" must NOT appear as a separate YAML key
       const evilLine = lines.find((l: string) => l.startsWith('evil_key:'));
       expect(evilLine).toBeUndefined();

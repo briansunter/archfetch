@@ -2,6 +2,7 @@ import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
+import { getErrorMessage } from '../utils/error';
 import { cleanMarkdownComplete } from '../utils/markdown-cleaner';
 
 export interface ExtractionResult {
@@ -25,9 +26,23 @@ const turndown = new TurndownService({
 turndown.use(gfm);
 
 turndown.addRule('removeComments', {
-  filter: (node) => (node as unknown as { nodeType: number }).nodeType === 8,
+  filter: (node) => (node as { nodeType: number }).nodeType === 8,
   replacement: () => '',
 });
+
+function sanitizeMarkdown(markdown: string): string {
+  // Remove javascript: URLs in markdown links
+  let sanitized = markdown.replace(/\[([^\]]*)\]\(javascript:[^)]*\)/gi, '$1');
+  // Remove data: URLs that could contain scripts
+  sanitized = sanitized.replace(/\[([^\]]*)\]\(data:[^)]*\)/gi, '$1');
+  // Remove vbscript: URLs
+  sanitized = sanitized.replace(/\[([^\]]*)\]\(vbscript:[^)]*\)/gi, '$1');
+  // Strip any remaining script tags
+  sanitized = sanitized.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  // Remove event handler attributes in any remaining HTML
+  sanitized = sanitized.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+  return sanitized;
+}
 
 export async function processHtmlToMarkdown(html: string, url: string, verbose = false): Promise<ExtractionResult> {
   try {
@@ -60,7 +75,7 @@ export async function processHtmlToMarkdown(html: string, url: string, verbose =
     }
 
     let markdown = turndown.turndown(content);
-
+    markdown = sanitizeMarkdown(markdown);
     markdown = cleanMarkdownComplete(markdown);
 
     let header = `# ${article.title}\n\n`;
@@ -77,7 +92,7 @@ export async function processHtmlToMarkdown(html: string, url: string, verbose =
       siteName: article.siteName ?? undefined,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { error: message };
   }
 }

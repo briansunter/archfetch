@@ -2,6 +2,7 @@ import type { Browser } from 'playwright';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import type { PlaywrightConfig } from '../../config/schema';
+import { getErrorMessage } from '../../utils/error';
 import type { BrowserManager } from './types';
 
 chromium.use(stealth());
@@ -32,7 +33,7 @@ export class LocalBrowserManager implements BrowserManager {
           ],
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         if (message.includes('Executable') || message.includes('browserType.launch')) {
           throw new Error('Playwright browsers are not installed. Run: npx playwright install chromium');
         }

@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { FetchiConfig } from '../config/schema';
+import { getErrorMessage } from '../utils/error';
 
 export interface CachedReference {
   refId: string;
@@ -39,10 +40,38 @@ export interface DeleteResult {
 }
 
 /**
+ * Escape a string value for safe inclusion in YAML frontmatter.
+ * Strips newlines and wraps in double quotes with internal quotes escaped.
+ */
+function escapeYamlValue(value: string): string {
+  const sanitized = value.replace(/[\r\n]/g, ' ').replace(/"/g, '\\"');
+  return `"${sanitized}"`;
+}
+
+// In-memory cache index to avoid repeated directory scans
+let cachedIndex: { references: CachedReference[]; dir: string; mtime: number } | null = null;
+
+function getCachedIndex(config: FetchiConfig): CachedReference[] {
+  const tempDir = config.paths.tempDir;
+  let mtime: number;
+  try {
+    mtime = statSync(tempDir).mtimeMs;
+    if (cachedIndex && cachedIndex.dir === tempDir && cachedIndex.mtime === mtime) {
+      return cachedIndex.references;
+    }
+  } catch {
+    return [];
+  }
+  const { references } = listCached(config);
+  cachedIndex = { references, dir: tempDir, mtime };
+  return references;
+}
+
+/**
  * Find a cached reference by URL
  */
 export function findByUrl(config: FetchiConfig, url: string): CachedReference | null {
-  const { references } = listCached(config);
+  const references = getCachedIndex(config);
   return references.find((r) => r.url === url) || null;
 }
 
@@ -89,24 +118,26 @@ export async function saveToTemp(
     const filepath = existing && refetch ? existing.filepath : join(tempDir, filename);
 
     const today = new Date().toISOString().split('T')[0];
-    const sanitizedUrl = url.replace(/[\r\n]/g, '');
     let fileContent = `---\n`;
-    fileContent += `title: "${title.replace(/"/g, '\\"')}"\n`;
-    fileContent += `source_url: ${sanitizedUrl}\n`;
+    fileContent += `title: ${escapeYamlValue(title)}\n`;
+    fileContent += `source_url: ${escapeYamlValue(url)}\n`;
     fileContent += `fetched_date: ${today}\n`;
     fileContent += `type: web\n`;
     fileContent += `status: temporary\n`;
     if (query) {
-      fileContent += `query: "${query.replace(/"/g, '\\"')}"\n`;
+      fileContent += `query: ${escapeYamlValue(query)}\n`;
     }
     fileContent += `---\n\n`;
     fileContent += content;
 
     await writeFile(filepath, fileContent, 'utf-8');
 
+    // Invalidate cache index after mutation
+    cachedIndex = null;
+
     return { refId: slug, filepath };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { refId: '', filepath: '', error: message };
   }
 }
@@ -164,7 +195,7 @@ export function listCached(config: FetchiConfig): ListResult {
 
     return { references };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { references: [], error: message };
   }
 }
@@ -173,7 +204,7 @@ export function listCached(config: FetchiConfig): ListResult {
  * Find a cached reference by ID
  */
 export function findCached(config: FetchiConfig, refId: string): CachedReference | null {
-  const { references } = listCached(config);
+  const references = getCachedIndex(config);
   return references.find((r) => r.refId === refId) || null;
 }
 
@@ -208,13 +239,16 @@ export function promoteReference(config: FetchiConfig, refId: string): PromoteRe
 
     unlinkSync(cached.filepath);
 
+    // Invalidate cache index after mutation
+    cachedIndex = null;
+
     return {
       success: true,
       fromPath: cached.filepath,
       toPath,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return {
       success: false,
       fromPath: '',
@@ -241,12 +275,15 @@ export function deleteCached(config: FetchiConfig, refId: string): DeleteResult 
 
     unlinkSync(cached.filepath);
 
+    // Invalidate cache index after mutation
+    cachedIndex = null;
+
     return {
       success: true,
       filepath: cached.filepath,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return {
       success: false,
       filepath: '',
@@ -327,7 +364,7 @@ export function extractLinksFromCached(config: FetchiConfig, refId: string): Lin
       sourceRef: refId,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return {
       links: [],
       count: 0,
